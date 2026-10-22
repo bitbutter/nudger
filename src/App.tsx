@@ -30,7 +30,6 @@ import { exportFileName } from './lib/exportImport';
 import { Sidebar } from './components/Sidebar';
 import { DocumentView } from './components/DocumentView';
 import { Welcome } from './components/Welcome';
-import { FilesPage } from './components/FilesPage';
 import { TemplatesPage } from './components/TemplatesPage';
 import { SettingsPage } from './components/SettingsPage';
 import { VersionDrawer, SaveVersionModal } from './components/VersionDrawer';
@@ -856,7 +855,6 @@ export default function App() {
         documents={documents}
         versionCounts={versionCounts}
         activeDocId={activeDoc?.id ?? null}
-        fileCount={scopedFiles.length}
         open={sidebarOpen}
         onClose={() => setSidebarOpen(false)}
         onNavigate={closeOnNarrow}
@@ -882,7 +880,7 @@ export default function App() {
           )
         ) : null}
 
-        {route.name === 'doc' ? (
+        {route.name === 'doc' || route.name === 'docFiles' ? (
           activeDoc ? (
             <DocumentView
               doc={activeDoc}
@@ -899,7 +897,15 @@ export default function App() {
               onRename={(title) => void renameActive(title)}
               onSaveVersion={() => setSaveVersionOpen(true)}
               onOpenVersions={() => setVersionsOpen(true)}
-              onOpenFiles={() => navigate({ name: 'docFiles', id: activeDoc.id })}
+              onOpenFiles={() =>
+                navigate(
+                  route.name === 'docFiles'
+                    ? { name: 'doc', id: activeDoc.id }
+                    : { name: 'docFiles', id: activeDoc.id },
+                )
+              }
+              filesOpen={route.name === 'docFiles'}
+              onCloseFiles={() => navigate({ name: 'doc', id: activeDoc.id })}
               fileCount={scopedFiles.length}
               onDuplicate={() => void duplicateActive()}
               onDelete={deleteActive}
@@ -928,25 +934,6 @@ export default function App() {
               onReplyStatus={(reply, status) => void setReplyStatus(reply, status)}
               onRetryNudger={(nudger) => void runNudger(nudger, { source: 'manual' })}
               onAddFromTemplate={(template) => startFromTemplate(template)}
-            />
-          ) : (
-            <div className="boot">
-              <p>This document no longer exists.</p>
-              <button type="button" className="btn" onClick={() => navigate({ name: 'home' })}>
-                Go home
-              </button>
-            </div>
-          )
-        ) : null}
-
-        {route.name === 'docFiles' ? (
-          activeDoc ? (
-            <FilesPage
-              doc={activeDoc}
-              files={scopedFiles}
-              nudgers={scopedNudgers}
-              templates={templates}
-              onToggleSidebar={() => setSidebarOpen((value) => !value)}
             />
           ) : (
             <div className="boot">

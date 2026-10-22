@@ -30,7 +30,7 @@ First run:
 
 1. Click **Start a document** and write something. The editor autosaves locally.
 2. Click **+ Add nudger** and pick a starter (Skeptical reviewer, Completeness coach, Hiring manager, …). Or create a blank one. The nudger belongs to this document.
-3. To send reference material, create or upload a `.txt`/`.md` file under **Reference files**, then attach it in the nudger editor. The attachment is part of this document's nudger, not a global setting.
+3. To send reference material, open **Files (n)** in the document toolbar and create or upload a `.txt`/`.md` file in the panel that opens under the draft, then attach it in the nudger editor. The attachment is part of this document's nudger, not a global setting.
 4. Open **Settings**, choose a provider, paste a key, and use **Test connection**.
 5. Click **Run** on a card, or **Preview** to see the exact resolved prompt first. A blocked or oversized prompt opens the preview instead of sending.
 6. Save named snapshots with **Save version** (Ctrl+S); restore from **Versions**. The **Document** menu copies the draft as plain text or downloads it as a `.txt` file.
@@ -134,7 +134,7 @@ A missing/unselected file, an unset model/base URL, or a missing API key blocks 
 
 ## Reference files
 
-`.txt` and `.md` files that belong to one document, stored in IndexedDB. Open them from a document's **Files** button or the sidebar entry while that document is open.
+`.txt` and `.md` files that belong to one document, stored in IndexedDB. They are not a separate top-level page: the **Files (n)** button in a document's toolbar opens the reference-file panel inside that document, and only that document's files are listed.
 
 - Create a blank file, paste text into a new file, or upload one or more `.txt`/`.md` files from disk. Uploads copy the contents; no path link is kept.
 - Only `.txt` and `.md` are accepted. Binary content and other formats (PDF, DOCX, HTML) are rejected. Uploaded files are capped at 2 MB each.
@@ -349,12 +349,13 @@ The API key is not part of persisted `Settings`. IndexedDB tables: `documents`, 
 
 ## Testing
 
-`npm test` runs 125 tests in 12 files:
+`npm test` runs 140 tests in 14 files:
 
 - placeholder resolution (`before_cursor`, `before_last_word`, paragraph, selection, case-insensitivity, unknown placeholders)
 - reference-file insertion, wrappers, auto-append, missing/unselected files, unreferenced warnings, oversized trim, files dropped by trimming
 - non-destructive version restore and autosave behavior
 - document-bound nudgers: per-document listing and order, document duplication/deletion cascades, cross-document reply rejection, version 1 → 2 database migration, legacy export migration
+- the reference-file panel rendering inside the document page (files listed, empty state)
 - nudger → template conversion (placeholders and generation settings kept, files and document left behind) and template reuse in another document
 - IndexedDB storage, CRUD, cascades, budgets, settings key stripping, export/import, merge remapping, import network safety
 - provider request shapes for OpenAI-compatible and Anthropic, URL joining, model override fallback, reserved custom headers, loopback http, response size limits, auth/rate-limit/context/CORS/timeout errors

@@ -6,17 +6,17 @@ import { looksBinary, uniqueFileName, validateFileName } from '../lib/referenceF
 import { ConfirmDialog, Modal } from './Modal';
 import { useToast } from './Toast';
 
-type FilesPageProps = {
+type FilesPanelProps = {
   doc: Document;
   files: ReferenceFile[];
   nudgers: Nudger[];
   templates: Template[];
-  onToggleSidebar: () => void;
+  onClose: () => void;
 };
 
 const MAX_FILE_BYTES = 2 * 1024 * 1024;
 
-export function FilesPage({ doc, files, nudgers, templates, onToggleSidebar }: FilesPageProps) {
+export function FilesPanel({ doc, files, nudgers, templates, onClose }: FilesPanelProps) {
   const { notify } = useToast();
   const [query, setQuery] = useState('');
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -231,35 +231,32 @@ ${template.prompt}`.toLowerCase().includes(token),
     : [];
 
   return (
-    <main className="page files-page">
-      <header className="page-head">
-        <div className="page-head-lead">
-          <button type="button" className="icon-btn" onClick={onToggleSidebar} aria-label="Toggle sidebar">
-            ☰
-          </button>
-          <div>
-            <h1>Reference files</h1>
-            <p className="page-sub">
-              Files for “{doc.title}”. Nudgers in this document attach only what they need. Files
-              are stored in this browser, belong to this document only, and are sent only inside a
-              prompt you preview and run.
-            </p>
-          </div>
+    <section className="panel-section files-panel" aria-labelledby="files-panel-title">
+      <header className="section-head">
+        <div>
+          <h2 id="files-panel-title">
+            Reference files <span className="count">{files.length}</span>
+          </h2>
+          <p className="section-sub">
+            Files for “{doc.title}”. Nudgers in this document attach only what they need. Files
+            are stored in this browser, belong to this document only, and are sent only inside a
+            prompt you preview and run.
+          </p>
         </div>
-        <div className="page-head-actions">
-          <a className="btn" href={`#/doc/${encodeURIComponent(doc.id)}`}>
-            Back to draft
-          </a>
-          <button type="button" className="btn" onClick={openNew}>
+        <div className="section-actions">
+          <button type="button" className="btn btn-sm" onClick={openNew}>
             New file
           </button>
           <button
             type="button"
-            className="btn btn-primary"
+            className="btn btn-sm btn-primary"
             onClick={() => uploadRef.current?.click()}
             disabled={uploading}
           >
             {uploading ? 'Uploading…' : 'Upload .txt / .md'}
+          </button>
+          <button type="button" className="btn btn-sm" onClick={onClose}>
+            Close
           </button>
           <input
             ref={uploadRef}
@@ -279,7 +276,7 @@ ${template.prompt}`.toLowerCase().includes(token),
             Add notes, a job posting, an outline or a sources list for this document. Only plain text
             and Markdown are supported; contents are copied into IndexedDB, not linked to a disk path.
           </p>
-          <div className="page-head-actions">
+          <div className="section-actions">
             <button type="button" className="btn btn-primary" onClick={openNew}>
               Create a file
             </button>
@@ -458,6 +455,6 @@ ${template.prompt}`.toLowerCase().includes(token),
           onConfirm={() => void deleteFile()}
         />
       ) : null}
-    </main>
+    </section>
   );
 }

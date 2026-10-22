@@ -8,7 +8,6 @@ type SidebarProps = {
   documents: Document[];
   versionCounts: Record<string, number>;
   activeDocId: string | null;
-  fileCount: number;
   open: boolean;
   onClose: () => void;
   onNavigate: () => void;
@@ -16,14 +15,13 @@ type SidebarProps = {
   onExport: () => void;
   onImport: () => void;
   storage: StorageInfo;
-  activeSection: 'doc' | 'files' | 'templates' | 'settings' | 'home';
+  activeSection: 'doc' | 'templates' | 'settings' | 'home';
 };
 
 export function Sidebar({
   documents,
   versionCounts,
   activeDocId,
-  fileCount,
   open,
   onClose,
   onNavigate,
@@ -128,17 +126,6 @@ export function Sidebar({
           <section className="sidebar-section">
             <h2 className="sidebar-label">Library</h2>
             <nav className="nav-list">
-              {activeDocId ? (
-                <a
-                  className={`nav-item ${activeSection === 'files' ? 'active' : ''}`}
-                  href={`#/doc/${encodeURIComponent(activeDocId)}/files`}
-                  onClick={onNavigate}
-                  title="Reference files for the open document"
-                >
-                  <span>Reference files</span>
-                  <span className="count">{fileCount}</span>
-                </a>
-              ) : null}
               <a
                 className={`nav-item ${activeSection === 'templates' ? 'active' : ''}`}
                 href="#/templates"

@@ -2156,6 +2156,20 @@ kbd {
 
 /* =================================================================== files */
 
+.files-panel {
+  margin-top: 26px;
+  scroll-margin-top: 16px;
+}
+
+.files-panel .section-head {
+  align-items: flex-start;
+  margin-bottom: 16px;
+}
+
+.files-panel .section-sub {
+  max-width: 90ch;
+}
+
 .files-layout {
   display: grid;
   grid-template-columns: 300px minmax(0, 1fr);

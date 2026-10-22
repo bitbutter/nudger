@@ -22,12 +22,14 @@ The local database is the source of truth. IndexedDB (`nudger`) holds seven tabl
 | Export validation and filenames | `src/lib/exportImport.ts` |
 | Key storage | `src/lib/keyStore.ts` |
 | Hash routing | `src/lib/hashRoute.ts` |
-| Autosave | `src/hooks/useDraft.ts` |
+| Autosave | `src/hooks/useDraft.ts`, `src/hooks/useAutoSave.ts` |
 | App shell and orchestration | `src/App.tsx` |
 | UI | `src/components/*.tsx`, `src/styles.css` |
 | Tests | `src/test/*.test.ts` |
 
 `storage.ts` is a store factory (`createStore(database)`) so tests can create an isolated fake-indexeddb database; the app uses a module-level singleton. UI components never talk to Dexie directly except through `useLiveQuery` against store methods.
+
+Reference files have no page of their own. The document toolbar's **Files (n)** button toggles the panel rendered by `src/components/FilesPanel.tsx` beneath the editor and nudger board of the same document page, and the `#/doc/:id/files` route is just that document page with the panel open, so reload and back/forward keep the right draft on screen.
 
 ## Data flow
 

@@ -4,6 +4,7 @@ import type { RunState } from '../lib/runManager';
 import { formatRelative, lineColumn, wordCount } from '../lib/util';
 import { paragraphAt } from '../lib/placeholders';
 import { NudgerBoard } from './NudgerBoard';
+import { FilesPanel } from './FilesPanel';
 
 type DocumentViewProps = {
   doc: Document;
@@ -20,7 +21,9 @@ type DocumentViewProps = {
   onRename: (title: string) => void;
   onSaveVersion: () => void;
   onOpenVersions: () => void;
+  filesOpen: boolean;
   onOpenFiles: () => void;
+  onCloseFiles: () => void;
   fileCount: number;
   onDuplicate: () => void;
   onDelete: () => void;
@@ -61,6 +64,11 @@ export function DocumentView(props: DocumentViewProps) {
 
   const onCaretRef = useRef(props.onCaret);
   onCaretRef.current = props.onCaret;
+
+  const filesRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (props.filesOpen) filesRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }, [props.filesOpen]);
 
   const reportCaret = () => {
     const area = areaRef.current;
@@ -159,6 +167,7 @@ export function DocumentView(props: DocumentViewProps) {
             className="btn"
             onClick={props.onOpenFiles}
             title="Reference files for this document"
+            aria-pressed={props.filesOpen}
           >
             Files ({props.fileCount})
           </button>
@@ -265,6 +274,18 @@ export function DocumentView(props: DocumentViewProps) {
           onOpenSettings={props.onOpenSettings}
         />
       </div>
+
+      {props.filesOpen ? (
+        <div ref={filesRef}>
+          <FilesPanel
+            doc={doc}
+            files={props.files}
+            nudgers={props.nudgers}
+            templates={props.templates}
+            onClose={props.onCloseFiles}
+          />
+        </div>
+      ) : null}
     </main>
   );
 }
