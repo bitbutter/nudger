@@ -107,7 +107,11 @@ function trimPrompts(system: string, prompt: string, limit: number): { system: s
 
 export function prepareRun(options: PrepareOptions): PreparedRun {
   const { nudger, document, caret, settings } = options;
-  const selected = selectedFilesForNudger(nudger.fileIds, options.files);
+  // Files belong to one nudger. Only that nudger's own files are ever resolved,
+  // even if a stale file id points at a file someone else owns.
+  const selected = selectedFilesForNudger(nudger.fileIds, options.files).filter(
+    (file) => file.nudgerId === nudger.id,
+  );
   const ctx = {
     text: document.currentText,
     selectionStart: caret.start,

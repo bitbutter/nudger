@@ -4,7 +4,11 @@ import { parseHash, routeToHash } from '../lib/hashRoute';
 describe('hash routing', () => {
   it('parses the document, files, templates and settings routes', () => {
     expect(parseHash('#/doc/abc%20123')).toEqual({ name: 'doc', id: 'abc 123' });
-    expect(parseHash('#/doc/abc%20123/files')).toEqual({ name: 'docFiles', id: 'abc 123' });
+    expect(parseHash('#/doc/abc%20123/nudger/n%201/files')).toEqual({
+      name: 'nudgerFiles',
+      id: 'abc 123',
+      nudgerId: 'n 1',
+    });
     // Files moved inside a document, so the old global route falls back home.
     expect(parseHash('#/files')).toEqual({ name: 'home' });
     expect(parseHash('#/templates')).toEqual({ name: 'templates' });
@@ -20,10 +24,13 @@ describe('hash routing', () => {
   it('round-trips routes through hashes', () => {
     expect(routeToHash({ name: 'doc', id: 'a b' })).toBe('#/doc/a%20b');
     expect(parseHash(routeToHash({ name: 'doc', id: 'a b' }))).toEqual({ name: 'doc', id: 'a b' });
-    expect(routeToHash({ name: 'docFiles', id: 'a b' })).toBe('#/doc/a%20b/files');
-    expect(parseHash(routeToHash({ name: 'docFiles', id: 'a b' }))).toEqual({
-      name: 'docFiles',
+    expect(routeToHash({ name: 'nudgerFiles', id: 'a b', nudgerId: 'n 1' })).toBe(
+      '#/doc/a%20b/nudger/n%201/files',
+    );
+    expect(parseHash(routeToHash({ name: 'nudgerFiles', id: 'a b', nudgerId: 'n 1' }))).toEqual({
+      name: 'nudgerFiles',
       id: 'a b',
+      nudgerId: 'n 1',
     });
     expect(routeToHash({ name: 'settings' })).toBe('#/settings');
   });

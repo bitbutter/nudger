@@ -17,6 +17,7 @@ function baseBundle(): ExportedBundle {
       {
         id: 'f1',
         documentId: 'd1',
+        nudgerId: null,
         name: 'notes.md',
         kind: 'md',
         content: 'facts',
@@ -101,7 +102,7 @@ describe('export validation', () => {
 
   it('rejects a file from another app or an unknown version', () => {
     expect(validateBundle({ app: 'other' }).ok).toBe(false);
-    expect(validateBundle({ ...baseBundle(), schemaVersion: 4 }).ok).toBe(false);
+    expect(validateBundle({ ...baseBundle(), schemaVersion: 5 }).ok).toBe(false);
     expect(validateBundle('not json').ok).toBe(false);
   });
 
@@ -207,6 +208,7 @@ describe('export validation', () => {
     bundle.files.push({
       id: 'f2',
       documentId: 'd1',
+      nudgerId: null,
       name: 'cv.pdf',
       kind: 'txt',
       content: 'nope',

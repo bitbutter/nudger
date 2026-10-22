@@ -286,6 +286,71 @@ describe('database upgrade to the split layout', () => {
   });
 });
 
+describe('database upgrade to nudger-owned files', () => {
+  it('copies a shared file per nudger and keeps unattached files unassigned', async () => {
+    const name = `nudger-v4-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+    const legacy = new Dexie(name);
+    legacy.version(4).stores({
+      documents: 'id, title, createdAt, updatedAt',
+      versions: 'id, documentId, createdAt',
+      files: 'id, documentId, name, createdAt, updatedAt',
+      nudgers: 'id, documentId, order, createdAt',
+      replies: 'id, documentId, nudgerId, createdAt, [documentId+nudgerId]',
+      templates: 'id, createdAt',
+      settings: 'key',
+    });
+    await legacy.open();
+    const now = Date.now();
+    await legacy.table('documents').add({
+      id: 'a',
+      title: 'A',
+      currentText: 'text',
+      createdAt: now,
+      updatedAt: now,
+    });
+    const shared = { ...legacyFile('shared.md', 'shared facts'), documentId: 'a' };
+    const orphan = { ...legacyFile('orphan.md', 'nobody reads this'), documentId: 'a' };
+    await legacy.table('files').bulkAdd([shared, orphan]);
+    await legacy.table('nudgers').bulkAdd([
+      { ...testNudger({ documentId: 'a' }), id: 'n1', order: 0, fileIds: [shared.id] },
+      { ...testNudger({ documentId: 'a' }), id: 'n2', order: 1, fileIds: [shared.id] },
+    ]);
+    await legacy.table('replies').add({
+      id: 'r2',
+      documentId: 'a',
+      nudgerId: 'n2',
+      text: 'nudge',
+      resolvedPrompt: '',
+      fileIds: [shared.id],
+      model: 'm',
+      provider: 'deepseek',
+      createdAt: now,
+      status: 'new',
+    });
+    legacy.close();
+
+    const upgraded = new NudgerDB(name);
+    try {
+      await upgraded.open();
+      const files = await upgraded.files.toArray();
+      expect(files).toHaveLength(3);
+      const owned = files.filter((file) => file.nudgerId);
+      expect(owned).toHaveLength(2);
+      expect(owned.every((file) => file.content === 'shared facts')).toBe(true);
+      expect(new Set(owned.map((file) => file.nudgerId))).toEqual(new Set(['n1', 'n2']));
+      expect(owned.find((file) => file.nudgerId === 'n1')?.id).toBe(shared.id);
+      expect(files.find((file) => file.name === 'orphan.md')?.nudgerId).toBeNull();
+      const n2 = await upgraded.nudgers.get('n2');
+      const n2File = owned.find((file) => file.nudgerId === 'n2')!;
+      expect(n2?.fileIds).toEqual([n2File.id]);
+      expect((await upgraded.replies.get('r2'))?.fileIds).toEqual([n2File.id]);
+    } finally {
+      upgraded.close();
+      await Dexie.delete(name);
+    }
+  });
+});
+
 describe('document-bound nudger storage', () => {
   it('keeps board order and listing per document', async () => {
     const store = await freshStore();

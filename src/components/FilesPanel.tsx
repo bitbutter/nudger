@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import type { Document, Nudger, ReferenceFile, Template } from '../types';
+import type { Nudger, ReferenceFile, Template } from '../types';
 import { store } from '../lib/storage';
 import { downloadText, formatChars, formatRelative, wordCount } from '../lib/util';
 import { looksBinary, uniqueFileName, validateFileName } from '../lib/referenceFiles';
@@ -7,16 +7,17 @@ import { ConfirmDialog, Modal } from './Modal';
 import { useToast } from './Toast';
 
 type FilesPanelProps = {
-  doc: Document;
+  /** The nudger that owns these files. */
+  nudger: Nudger;
+  /** That nudger's files, in attachment order. */
   files: ReferenceFile[];
-  nudgers: Nudger[];
   templates: Template[];
   onClose: () => void;
 };
 
 const MAX_FILE_BYTES = 2 * 1024 * 1024;
 
-export function FilesPanel({ doc, files, nudgers, templates, onClose }: FilesPanelProps) {
+export function FilesPanel({ nudger, files, templates, onClose }: FilesPanelProps) {
   const { notify } = useToast();
   const [query, setQuery] = useState('');
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -108,10 +109,8 @@ export function FilesPanel({ doc, files, nudgers, templates, onClose }: FilesPan
       await store.updateFile(selected.id, { name: nameDraft });
       const token = `{{file:${oldName}}}`.toLowerCase();
       const affected =
-        nudgers.filter((nudger) =>
-          `${nudger.system}
-${nudger.prompt}`.toLowerCase().includes(token),
-        ).length +
+        (`${nudger.system}
+${nudger.prompt}`.toLowerCase().includes(token) ? 1 : 0) +
         templates.filter((template) =>
           `${template.system}
 ${template.prompt}`.toLowerCase().includes(token),
@@ -148,7 +147,7 @@ ${template.prompt}`.toLowerCase().includes(token),
   const createFile = async () => {
     setNewError(null);
     try {
-      const created = await store.createFile(doc.id, newName, newContent);
+      const created = await store.createFile(nudger.id, newName, newContent);
       setSelectedId(created.id);
       setNewOpen(false);
       notify(`Created ${created.name}.`, 'success');
@@ -190,7 +189,7 @@ ${template.prompt}`.toLowerCase().includes(token),
         }
         const name = uniqueFileName(file.name, existing);
         try {
-          const created = await store.createFile(doc.id, name, text);
+          const created = await store.createFile(nudger.id, name, text);
           existing.push(created.name);
           lastId = created.id;
           createdCount += 1;
@@ -215,20 +214,11 @@ ${template.prompt}`.toLowerCase().includes(token),
     }
     pending.current = null;
     setSaving(false);
-    const affected = await store.deleteFile(selected.id);
+    await store.deleteFile(selected.id);
     setDeleteOpen(false);
     setSelectedId(null);
-    notify(
-      affected.length
-        ? `Deleted ${selected.name} and detached it from ${affected.length} nudger${affected.length === 1 ? '' : 's'}.`
-        : `Deleted ${selected.name}.`,
-      'success',
-    );
+    notify(`Deleted ${selected.name}.`, 'success');
   };
-
-  const referencedBy = selected
-    ? nudgers.filter((nudger) => nudger.fileIds.includes(selected.id)).map((nudger) => nudger.name)
-    : [];
 
   return (
     <section className="panel-section files-panel" aria-labelledby="files-panel-title">
@@ -238,9 +228,9 @@ ${template.prompt}`.toLowerCase().includes(token),
             Reference files <span className="count">{files.length}</span>
           </h2>
           <p className="section-sub">
-            Files for “{doc.title}”. Nudgers in this document attach only what they need. Files
-            are stored in this browser, belong to this document only, and are sent only inside a
-            prompt you preview and run.
+            Files owned by “{nudger.name}”. Only these files can reach this nudger; other nudgers
+            have their own. Stored in this browser, and sent only inside a prompt you preview and
+            run.
           </p>
         </div>
         <div className="section-actions">
@@ -301,7 +291,7 @@ ${template.prompt}`.toLowerCase().includes(token),
               <p className="field-note">No files match “{query}”.</p>
             ) : (
               <ul className="file-list">
-                {filtered.map((file) => (
+                {filtered.map((file, index) => (
                   <li key={file.id}>
                     <button
                       type="button"
@@ -316,6 +306,26 @@ ${template.prompt}`.toLowerCase().includes(token),
                         {formatChars(file.content.length)} chars · {formatRelative(file.updatedAt)}
                       </span>
                     </button>
+                    <span className="file-item-actions">
+                      <button
+                        type="button"
+                        className="icon-btn small"
+                        onClick={() => void store.moveFile(nudger.id, file.id, -1)}
+                        disabled={index === 0}
+                        aria-label={`Move ${file.name} up`}
+                      >
+                        ↑
+                      </button>
+                      <button
+                        type="button"
+                        className="icon-btn small"
+                        onClick={() => void store.moveFile(nudger.id, file.id, 1)}
+                        disabled={index === filtered.length - 1}
+                        aria-label={`Move ${file.name} down`}
+                      >
+                        ↓
+                      </button>
+                    </span>
                   </li>
                 ))}
               </ul>
@@ -374,14 +384,7 @@ ${template.prompt}`.toLowerCase().includes(token),
                 />
                 <footer className="file-editor-foot">
                   <span>Stored locally in IndexedDB. Editing affects future runs only.</span>
-                  {referencedBy.length > 0 ? (
-                    <span>
-                      Attached to {referencedBy.length} nudger{referencedBy.length === 1 ? '' : 's'}:{' '}
-                      {referencedBy.join(', ')}
-                    </span>
-                  ) : (
-                    <span>Not attached to any nudger yet.</span>
-                  )}
+                  <span>Owned by “{nudger.name}”.</span>
                 </footer>
               </>
             ) : (
@@ -444,11 +447,7 @@ ${template.prompt}`.toLowerCase().includes(token),
       {deleteOpen && selected ? (
         <ConfirmDialog
           title={`Delete ${selected.name}?`}
-          message={
-            referencedBy.length
-              ? `This file is attached to ${referencedBy.length} nudger(s): ${referencedBy.join(', ')}. Deleting it detaches it from those nudgers. Old replies keep their resolved prompts.`
-              : 'This removes the file from this browser. Old replies keep their resolved prompts.'
-          }
+          message={`This file belongs to “${nudger.name}”. Deleting it removes it from that nudger. Old replies keep their resolved prompts.`}
           confirmLabel="Delete file"
           danger
           onClose={() => setDeleteOpen(false)}

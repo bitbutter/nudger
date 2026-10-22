@@ -43,14 +43,14 @@ describe('mocked nudger run', () => {
   it('creates a document, attaches a file, resolves the prompt, calls the model and saves the reply', async () => {
     const store = await freshStore();
     const doc = await store.createDocument('Cover letter', 'Dear team, I built a thing.');
-    const notes = await store.createFile(doc.id, 'notes.md', 'FACT: the thing served 1.2 million requests.');
-    const nudger = await store.createNudger(
+    let nudger = await store.createNudger(
       newNudgerInput({ documentId: doc.id,
         name: 'Completeness coach',
-        fileIds: [notes.id],
         prompt: 'Reference notes:\n{{files}}\n\nDraft:\n{{before_cursor}}',
       }),
     );
+    const notes = await store.createFile(nudger.id, 'notes.md', 'FACT: the thing served 1.2 million requests.');
+    nudger = (await store.getNudger(nudger.id))!;
 
     const prepared = prepareRun({
       nudger,
@@ -84,15 +84,15 @@ describe('mocked nudger run', () => {
   it('returns the nudge and structured facts in one response', async () => {
     const store = await freshStore();
     const doc = await store.createDocument('Cover letter', 'Dear team, I built a thing.');
-    const notes = await store.createFile(doc.id, 'notes.md', 'FACT: the thing served 1.2 million requests.');
-    const nudger = await store.createNudger(
+    let nudger = await store.createNudger(
       newNudgerInput({ documentId: doc.id,
         facts: true,
         factsPrompt: 'Focus on numbers in the notes.',
-        fileIds: [notes.id],
         prompt: 'Reference notes:\n{{files}}\n\nDraft:\n{{before_cursor}}',
       }),
     );
+    const notes = await store.createFile(nudger.id, 'notes.md', 'FACT: the thing served 1.2 million requests.');
+    nudger = (await store.getNudger(nudger.id))!;
     const prepared = prepareRun({
       nudger,
       document: doc,
@@ -182,10 +182,11 @@ describe('mocked nudger run', () => {
   it('keeps old resolved prompts unchanged when the reference file is edited', async () => {
     const store = await freshStore();
     const doc = await store.createDocument('Essay', 'Draft text.');
-    const notes = await store.createFile(doc.id, 'notes.md', 'OLD FACT');
-    const nudger = await store.createNudger(
-      newNudgerInput({ documentId: doc.id, fileIds: [notes.id], prompt: 'Notes:\n{{files}}\n\nDraft:\n{{before_cursor}}' }),
+    let nudger = await store.createNudger(
+      newNudgerInput({ documentId: doc.id, prompt: 'Notes:\n{{files}}\n\nDraft:\n{{before_cursor}}' }),
     );
+    const notes = await store.createFile(nudger.id, 'notes.md', 'OLD FACT');
+    nudger = (await store.getNudger(nudger.id))!;
     let call = 0;
     vi.stubGlobal(
       'fetch',

@@ -1,7 +1,7 @@
 import Dexie, { type Table } from 'dexie';
 import type { Document, Nudger, ReferenceFile, Reply, Template, Version } from '../types';
 import type { StoredSettings } from './defaults';
-import { planFileMigration, planNudgerMigration } from './migrate';
+import { planFileMigration, planFileOwnershipMigration, planNudgerMigration } from './migrate';
 
 export type SettingsRow = { key: string; value: StoredSettings };
 
@@ -69,6 +69,26 @@ export class NudgerDB extends Dexie {
     // Nudgers moved to the right of the draft. The old stacked layout was the
     // only default, so a stored 'stacked' is a leftover default rather than a
     // choice; the split view is now the default and can be dragged.
+    // Reference files belong to one nudger, not to the document's shared pool.
+    // Files attached to several nudgers become independent copies; files that no
+    // nudger attaches stay in the document as unassigned.
+    this.version(5)
+      .stores({ files: 'id, documentId, nudgerId, name, createdAt, updatedAt' })
+      .upgrade(async (tx) => {
+        const fileRows = await tx.table('files').toArray();
+        if (!fileRows.length) return;
+        const nudgerRows = await tx.table('nudgers').toArray();
+        const replyRows = await tx.table('replies').toArray();
+        const plan = planFileOwnershipMigration(fileRows, nudgerRows, replyRows);
+        await tx.table('files').clear();
+        if (plan.files.length) await tx.table('files').bulkPut(plan.files);
+        for (const update of plan.nudgerUpdates) {
+          await tx.table('nudgers').update(update.id, { fileIds: update.fileIds });
+        }
+        for (const update of plan.replyUpdates) {
+          await tx.table('replies').update(update.id, { fileIds: update.fileIds });
+        }
+      });
     this.version(4).upgrade(async (tx) => {
       const row = await tx.table('settings').get('app');
       if (!row?.value || row.value.layout !== 'stacked') return;

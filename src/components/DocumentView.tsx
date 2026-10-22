@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import type { PointerEvent as ReactPointerEvent } from 'react';
 import type { Caret, Document, Nudger, ReferenceFile, Reply, ReplyStatus, Template } from '../types';
 import type { RunState } from '../lib/runManager';
-import { formatRelative, lineColumn, wordCount } from '../lib/util';
+import { formatChars, formatRelative, lineColumn, wordCount } from '../lib/util';
 import { paragraphAt } from '../lib/placeholders';
 import {
   clampEditorWidth,
@@ -30,10 +30,14 @@ type DocumentViewProps = {
   onRename: (title: string) => void;
   onSaveVersion: () => void;
   onOpenVersions: () => void;
-  filesOpen: boolean;
-  onOpenFiles: () => void;
+  /** Nudger whose files panel is open, if any. */
+  openFilesNudgerId: string | null;
+  onOpenFiles: (nudgerId: string) => void;
   onCloseFiles: () => void;
-  fileCount: number;
+  /** Files in this document that no nudger owns yet. */
+  unassignedFiles: ReferenceFile[];
+  onAdoptFile: (fileId: string, nudgerId: string) => void;
+  onDeleteFile: (fileId: string) => void;
   onDuplicate: () => void;
   onDelete: () => void;
   onCopyText: () => void;
@@ -76,8 +80,10 @@ export function DocumentView(props: DocumentViewProps) {
 
   const filesRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
-    if (props.filesOpen) filesRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-  }, [props.filesOpen]);
+    if (props.openFilesNudgerId) {
+      filesRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
+  }, [props.openFilesNudgerId]);
 
   // The draft column is draggable in the side-by-side layout. Its width is a
   // per-device preference, so it lives in localStorage rather than IndexedDB.
@@ -167,6 +173,15 @@ export function DocumentView(props: DocumentViewProps) {
   const beforeChars = text.slice(0, Math.min(caret.start, text.length)).length;
   const paragraph = useMemo(() => paragraphAt(text, caret.start), [text, caret.start]);
 
+  const openNudger = props.openFilesNudgerId
+    ? props.nudgers.find((nudger) => nudger.id === props.openFilesNudgerId) ?? null
+    : null;
+  const filesOfOpenNudger = openNudger
+    ? openNudger.fileIds
+        .map((id) => props.files.find((file) => file.id === id))
+        .filter((file): file is ReferenceFile => Boolean(file))
+    : [];
+
   const commitTitle = () => {
     const next = title.trim() || 'Untitled document';
     if (next !== doc.title) props.onRename(next);
@@ -243,15 +258,6 @@ export function DocumentView(props: DocumentViewProps) {
           </button>
           <button type="button" className="btn" onClick={props.onOpenVersions}>
             Versions
-          </button>
-          <button
-            type="button"
-            className="btn"
-            onClick={props.onOpenFiles}
-            title="Reference files for this document"
-            aria-pressed={props.filesOpen}
-          >
-            Files ({props.fileCount})
           </button>
           <details className="menu">
             <summary className="btn menu-summary" aria-label="Document menu">
@@ -384,15 +390,62 @@ export function DocumentView(props: DocumentViewProps) {
           onRetryNudger={props.onRetryNudger}
           onAddFromTemplate={props.onAddFromTemplate}
           onOpenSettings={props.onOpenSettings}
+          onOpenFiles={props.onOpenFiles}
         />
       </div>
 
-      {props.filesOpen ? (
+      {props.unassignedFiles.length > 0 ? (
+        <section className="panel-section files-panel" aria-labelledby="unassigned-files-title">
+          <header className="section-head">
+            <div>
+              <h2 id="unassigned-files-title">
+                Unassigned files <span className="count">{props.unassignedFiles.length}</span>
+              </h2>
+              <p className="section-sub">
+                These files are not attached to any nudger, so no nudger reads them. Attach one to a
+                nudger, or delete it.
+              </p>
+            </div>
+          </header>
+          <ul className="unassigned-list">
+            {props.unassignedFiles.map((file) => (
+              <li key={file.id}>
+                <span className="unassigned-name">{file.name}</span>
+                <span className="unassigned-stats">{formatChars(file.content.length)} chars</span>
+                <select
+                  className="select"
+                  value=""
+                  aria-label={`Attach ${file.name} to a nudger`}
+                  onChange={(event) => {
+                    const nudgerId = event.currentTarget.value;
+                    if (nudgerId) props.onAdoptFile(file.id, nudgerId);
+                  }}
+                >
+                  <option value="">Attach to…</option>
+                  {props.nudgers.map((nudger) => (
+                    <option key={nudger.id} value={nudger.id}>
+                      {nudger.name}
+                    </option>
+                  ))}
+                </select>
+                <button
+                  type="button"
+                  className="btn btn-sm btn-danger"
+                  onClick={() => props.onDeleteFile(file.id)}
+                >
+                  Delete
+                </button>
+              </li>
+            ))}
+          </ul>
+        </section>
+      ) : null}
+
+      {openNudger ? (
         <div ref={filesRef}>
           <FilesPanel
-            doc={doc}
-            files={props.files}
-            nudgers={props.nudgers}
+            nudger={openNudger}
+            files={filesOfOpenNudger}
             templates={props.templates}
             onClose={props.onCloseFiles}
           />

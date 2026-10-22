@@ -3,7 +3,7 @@ import { useEffect, useState } from 'react';
 export type Route =
   | { name: 'home' }
   | { name: 'doc'; id: string }
-  | { name: 'docFiles'; id: string }
+  | { name: 'nudgerFiles'; id: string; nudgerId: string }
   | { name: 'settings' }
   | { name: 'templates' };
 
@@ -14,7 +14,9 @@ export function parseHash(hash: string): Route {
   if (parts[0] === 'doc' && parts[1]) {
     try {
       const id = decodeURIComponent(parts[1]);
-      if (parts[2] === 'files' && parts.length === 3) return { name: 'docFiles', id };
+      if (parts[2] === 'nudger' && parts[3] && parts[4] === 'files' && parts.length === 5) {
+        return { name: 'nudgerFiles', id, nudgerId: decodeURIComponent(parts[3]) };
+      }
       return { name: 'doc', id };
     } catch {
       return { name: 'home' };
@@ -31,8 +33,8 @@ export function routeToHash(route: Route): string {
       return '#/';
     case 'doc':
       return `#/doc/${encodeURIComponent(route.id)}`;
-    case 'docFiles':
-      return `#/doc/${encodeURIComponent(route.id)}/files`;
+    case 'nudgerFiles':
+      return `#/doc/${encodeURIComponent(route.id)}/nudger/${encodeURIComponent(route.nudgerId)}/files`;
     case 'settings':
       return '#/settings';
     case 'templates':
@@ -59,7 +61,8 @@ export function useHashRoute(): Route {
 export const HASH_ROUTES = {
   home: () => navigate({ name: 'home' }),
   doc: (id: string) => navigate({ name: 'doc', id }),
-  docFiles: (id: string) => navigate({ name: 'docFiles', id }),
+  nudgerFiles: (id: string, nudgerId: string) =>
+    navigate({ name: 'nudgerFiles', id, nudgerId }),
   settings: () => navigate({ name: 'settings' }),
   templates: () => navigate({ name: 'templates' }),
 };

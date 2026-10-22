@@ -20,11 +20,17 @@ export async function makeStore() {
   };
 }
 
-export function testFile(name: string, content: string, documentId = 'doc-1'): ReferenceFile {
+export function testFile(
+  name: string,
+  content: string,
+  nudgerId: string | null = 'nudger-1',
+  documentId = 'doc-1',
+): ReferenceFile {
   const now = Date.now();
   return {
     id: `file-${name}`,
     documentId,
+    nudgerId,
     name,
     kind: name.endsWith('.md') ? 'md' : 'txt',
     content,

@@ -28,6 +28,7 @@ type NudgerBoardProps = {
   onRetryNudger: (nudger: Nudger) => void;
   onAddFromTemplate: (template: Template) => void;
   onOpenSettings: () => void;
+  onOpenFiles: (nudgerId: string) => void;
 };
 
 export function NudgerBoard(props: NudgerBoardProps) {
@@ -110,6 +111,7 @@ export function NudgerBoard(props: NudgerBoardProps) {
               index={index}
               total={nudgers.length}
               fileCount={nudger.fileIds.length}
+          onOpenFiles={() => props.onOpenFiles(nudger.id)}
               replies={props.replies.filter((reply) => reply.nudgerId === nudger.id)}
               state={state}
               focused={props.focusedNudgerId === nudger.id}

@@ -73,7 +73,8 @@ export default function App() {
   const templates = useLiveQuery(() => store.listTemplates(), []);
   const settings = useLiveQuery(() => store.getSettings(), []);
   const versionCounts = useLiveQuery(() => store.listVersionCounts(), []);
-  const activeId = route.name === 'doc' || route.name === 'docFiles' ? route.id : null;
+  const activeId =
+    route.name === 'doc' || route.name === 'nudgerFiles' ? route.id : null;
   const activeDoc = documents?.find((doc) => doc.id === activeId) ?? null;
 
   const [caret, setCaret] = useState<Caret>({ start: 0, end: 0 });
@@ -116,11 +117,15 @@ export default function App() {
     () => (nudgers ?? []).filter((nudger) => nudger.documentId === activeId),
     [nudgers, activeId],
   );
-  // Reference files belong to a document too: everything a run can see comes
-  // from the open document only.
+  // Reference files belong to a nudger. The board and the run pipeline only see
+  // the open document's files, and files nobody owns are listed as unassigned.
   const scopedFiles = useMemo(
     () => (files ?? []).filter((file) => file.documentId === activeId),
     [files, activeId],
+  );
+  const scopedUnassignedFiles = useMemo(
+    () => scopedFiles.filter((file) => !file.nudgerId),
+    [scopedFiles],
   );
   const nudgersRef = useRef<Nudger[]>([]);
   // Auto-run, Run all, ordering and the board only ever see this document's
@@ -697,6 +702,24 @@ export default function App() {
     }
   };
 
+  const adoptFile = async (fileId: string, nudgerId: string) => {
+    try {
+      const file = await store.adoptFile(fileId, nudgerId);
+      notify(`${file.name} now belongs to that nudger.`, 'success');
+    } catch (error) {
+      notify(error instanceof Error ? error.message : String(error), 'error');
+    }
+  };
+
+  const deleteFile = async (fileId: string) => {
+    try {
+      await store.deleteFile(fileId);
+      notify('File deleted.', 'success');
+    } catch (error) {
+      notify(error instanceof Error ? error.message : String(error), 'error');
+    }
+  };
+
   const deleteNudger = (nudger: Nudger) => {
     const replyCount = repliesRef.current.filter((reply) => reply.nudgerId === nudger.id).length;
     setConfirm({
@@ -838,7 +861,7 @@ export default function App() {
   const versionList = versions ?? [];
   const hasKey = Boolean(apiKey);
   const activeSection =
-    route.name === 'doc' || route.name === 'docFiles'
+    route.name === 'doc' || route.name === 'nudgerFiles'
       ? 'doc'
       : route.name === 'templates'
         ? 'templates'
@@ -881,7 +904,7 @@ export default function App() {
           )
         ) : null}
 
-        {route.name === 'doc' || route.name === 'docFiles' ? (
+        {route.name === 'doc' || route.name === 'nudgerFiles' ? (
           activeDoc ? (
             <DocumentView
               doc={activeDoc}
@@ -898,16 +921,14 @@ export default function App() {
               onRename={(title) => void renameActive(title)}
               onSaveVersion={() => setSaveVersionOpen(true)}
               onOpenVersions={() => setVersionsOpen(true)}
-              onOpenFiles={() =>
-                navigate(
-                  route.name === 'docFiles'
-                    ? { name: 'doc', id: activeDoc.id }
-                    : { name: 'docFiles', id: activeDoc.id },
-                )
+              openFilesNudgerId={route.name === 'nudgerFiles' ? route.nudgerId : null}
+              onOpenFiles={(nudgerId) =>
+                navigate({ name: 'nudgerFiles', id: activeDoc.id, nudgerId })
               }
-              filesOpen={route.name === 'docFiles'}
               onCloseFiles={() => navigate({ name: 'doc', id: activeDoc.id })}
-              fileCount={scopedFiles.length}
+              unassignedFiles={scopedUnassignedFiles}
+              onAdoptFile={(fileId, nudgerId) => void adoptFile(fileId, nudgerId)}
+              onDeleteFile={(fileId) => void deleteFile(fileId)}
               onDuplicate={() => void duplicateActive()}
               onDelete={deleteActive}
               onCopyText={() => void copyDocumentText()}

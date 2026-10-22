@@ -3,20 +3,16 @@ import { describe, expect, it } from 'vitest';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { FilesPanel } from '../components/FilesPanel';
 import { ToastProvider } from '../components/Toast';
-import type { Document, Nudger, ReferenceFile, Template } from '../types';
+import type { ReferenceFile, Template } from '../types';
+import { testNudger } from './helpers';
 
-const doc: Document = {
-  id: 'doc-1',
-  title: 'Draft one',
-  currentText: 'Some draft text.',
-  createdAt: 0,
-  updatedAt: 0,
-};
+const nudger = testNudger({ id: 'nudger-1', name: 'Coach' });
 
 function file(id: string, name: string): ReferenceFile {
   return {
     id,
-    documentId: doc.id,
+    documentId: nudger.documentId,
+    nudgerId: nudger.id,
     name,
     kind: name.endsWith('.md') ? 'md' : 'txt',
     content: `${name} contents`,
@@ -32,9 +28,8 @@ function render(files: ReferenceFile[]): string {
       ToastProvider,
       null,
       createElement(FilesPanel, {
-        doc,
+        nudger,
         files,
-        nudgers: [] as Nudger[],
         templates: [] as Template[],
         onClose: () => {},
       }),
@@ -49,6 +44,7 @@ describe('reference files panel', () => {
     expect(html).not.toContain('<main');
     expect(html).toContain('panel-section files-panel');
     expect(html).toContain('Reference files');
+    expect(html).toContain('Coach');
     expect(html).toContain('notes.md');
     expect(html).toContain('sources.txt');
   });

@@ -11,6 +11,7 @@ type NudgerCardProps = {
   index: number;
   total: number;
   fileCount: number;
+  onOpenFiles: () => void;
   replies: Reply[];
   state: RunState | undefined;
   focused: boolean;
@@ -177,6 +178,7 @@ export function NudgerCard({
   index,
   total,
   fileCount,
+  onOpenFiles,
   replies,
   state,
   focused,
@@ -221,9 +223,14 @@ export function NudgerCard({
           <h3 className="card-name">{nudger.name}</h3>
         </div>
         <div className="card-chips">
-          <span className="chip" title="Reference files attached">
+          <button
+            type="button"
+            className="chip chip-files"
+            title="Reference files owned by this nudger"
+            onClick={onOpenFiles}
+          >
             {fileCount} file{fileCount === 1 ? '' : 's'}
-          </span>
+          </button>
           <span
             className={`chip ${budgetLeft === 0 ? 'chip-warn' : ''}`}
             title="Replies used / allowance for this document"

@@ -32,6 +32,11 @@ export type ReferenceFile = {
   id: string;
   /** The document this file belongs to. Files never travel between documents. */
   documentId: string;
+  /**
+   * The nudger that owns this file. `null` means the file is not attached to
+   * any nudger yet (only produced by migrations and imports of older data).
+   */
+  nudgerId: string | null;
   name: string;
   kind: 'txt' | 'md';
   content: string;
@@ -133,7 +138,7 @@ export type Settings = {
 
 export type ExportedBundle = {
   app: 'nudger';
-  schemaVersion: 1 | 2 | 3;
+  schemaVersion: 1 | 2 | 3 | 4;
   exportedAt: number;
   documents: Document[];
   versions: Version[];

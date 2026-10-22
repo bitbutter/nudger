@@ -5,7 +5,7 @@
 A nudger never writes into your document. It returns plain text. You copy what helps.
 
 - Static site, no backend, no accounts, no analytics, no third-party scripts.
-- Documents, versions, files, nudgers, replies and settings live in IndexedDB.
+- Documents, versions, nudger-owned files, nudgers, replies and settings live in IndexedDB.
 - Your API key stays in this browser. Keys are never stored in IndexedDB, exported, or logged.
 - Text leaves the browser only when you run a nudger, and the resolved-prompt preview shows exactly what will be sent.
 - Default provider: **DeepSeek** pay-as-you-go (`deepseek-flash`), which allows direct browser requests. OpenAI, Anthropic, OpenRouter, Groq, Mistral and custom OpenAI-compatible endpoints are also supported.
@@ -136,14 +136,15 @@ A missing/unselected file, an unset model/base URL, or a missing API key blocks 
 
 ## Reference files
 
-`.txt` and `.md` files that belong to one document, stored in IndexedDB. They are not a separate top-level page: the **Files (n)** button in a document's toolbar opens the reference-file panel inside that document, and only that document's files are listed.
+`.txt` and `.md` files that belong to one nudger, stored in IndexedDB. A nudger reads only the files it owns, so material for one replier is never sent to another. There is no document-wide file page: the **n files** chip on a nudger card opens that nudger's file panel underneath the draft.
 
 - Create a blank file, paste text into a new file, or upload one or more `.txt`/`.md` files from disk. Uploads copy the contents; no path link is kept.
 - Only `.txt` and `.md` are accepted. Binary content and other formats (PDF, DOCX, HTML) are rejected. Uploaded files are capped at 2 MB each.
-- Names are unique case-insensitively. Uploads that collide are saved with ` (2)`, ` (3)`, … rather than overwriting.
-- Rename, edit, search, download, delete. Editing is a plain-text textarea; the file's char count, word count, kind and updated time are shown.
-- The file list shows that document's files, and its nudgers can attach any subset in a chosen order. Names are unique inside the document; another document can have a file with the same name and different contents.
-- Deleting a file removes it from every nudger in that document that attached it. Old replies still hold their resolved prompt.
+- Names are unique case-insensitively inside a nudger. Uploads that collide are saved with ` (2)`, ` (3)`, … rather than overwriting. Two nudgers can each own a file called `notes.md` with different contents.
+- Rename, edit, reorder, search, download, delete. Reordering sets the order `{{files}}` inserts them in. Editing is a plain-text textarea; the file's char count, word count, kind and updated time are shown.
+- Duplicating a nudger copies its files, so the copy is independent. Deleting a nudger deletes its files. Deleting a document removes its nudgers and their files.
+- Files a nudger no longer owns (left over from older versions of the app, or imported from an older export) appear in an **Unassigned files** section on the document, where each can be attached to a nudger or deleted. Unassigned files are never sent.
+- Old replies still hold their resolved prompt after a file is edited or deleted.
 
 Files are part of exports. They are never committed to the repository.
 
@@ -254,16 +255,16 @@ There is a visible privacy note in the sidebar and a fuller privacy section in S
 
 ## Export, import and storage
 
-**Export** downloads a JSON bundle (`nudger-export-YYYY-MM-DD-HHMM.json`) with schema version 3: documents, versions, reference files, document-bound nudgers, replies, custom templates and settings. API keys are excluded, and the export is written only after any pending autosave is flushed.
+**Export** downloads a JSON bundle (`nudger-export-YYYY-MM-DD-HHMM.json`) with schema version 4: documents, versions, nudger-owned reference files, document-bound nudgers, replies, custom templates and settings. API keys are excluded, and the export is written only after any pending autosave is flushed.
 
 **Import** validates the file and lets you choose:
 
-- **Merge:** add items whose ids are not already present. Existing documents, files, nudgers and settings are untouched. A file whose name already exists in the same document is reused for imported nudgers that reference it, so `{{file:name}}` keeps resolving. Duplicate ids are skipped. Settings are not changed.
-- **Replace:** delete all current app data and settings, then load the export (with the endpoint safeguards below). Reference files in the export replace every document's files. The API key is never imported or deleted.
+- **Merge:** add items whose ids are not already present. Existing documents, files, nudgers and settings are untouched. A file whose name already exists on the same nudger is reused, so `{{file:name}}` keeps resolving. Duplicate ids are skipped. Settings are not changed.
+- **Replace:** delete all current app data and settings, then load the export (with the endpoint safeguards below). Reference files in the export replace everything. The API key is never imported or deleted.
 
 Safety on replace: the exported **base URL and custom headers are ignored by default** (a hostile export must not be able to point your key at another host). Import shows the imported host and offers an explicit checkbox to restore those network settings. The local **remember key** preference is also kept, so an import cannot move your key between storage modes. Imported nudgers always start with **auto-run off** and use your current provider; per-nudger provider overrides are not imported, so a shared nudger pack cannot silently redirect the key to another preset host.
 
-Validation drops malformed items with visible warnings rather than importing partial garbage. Version 1 and 2 exports are still accepted: their global nudgers and shared reference files are copied into every document in the export, and replies are pointed at the copy for their document, which is the same migration the browser database performs. Unsupported schema versions are rejected. Import does not validate the semantics of prompts; it does validate types, file extensions and references.
+Validation drops malformed items with visible warnings rather than importing partial garbage. Older exports are still accepted and migrated the same way the browser database migrates itself: version 1 and 2 bundles get their global nudgers and shared files copied into every document, version 3 bundles have each document file copied per nudger that attaches it, and a file no nudger attaches is imported as an unassigned file of its document. Unsupported schema versions are rejected. Import does not validate the semantics of prompts; it does validate types, file extensions and references.
 
 **Storage usage** is read from `navigator.storage.estimate()` and shown in the sidebar and Settings. The app warns at 80% and surfaces quota errors instead of silently losing a write. IndexedDB stores the whole document text, so very large documents and many reference files consume real space.
 
@@ -304,7 +305,8 @@ base-uri 'none'; form-action 'none'; object-src 'none'
 ```ts
 Document   { id, title, currentText, createdAt, updatedAt }
 Version    { id, documentId, text, label?, createdAt, wordCount }
-ReferenceFile { id, name, kind: "txt" | "md", content, createdAt, updatedAt, wordCount }
+ReferenceFile { id, documentId, nudgerId: string | null, name, kind: "txt" | "md", content,
+                createdAt, updatedAt, wordCount }
 Nudger     { id, documentId, name, description?, color, system, prompt, fileIds[], providerId?, model?,
              temperature, maxTokens, maxContextChars, autoRun, enabled, done, budget,
              facts, factsPrompt, order, templateId?, createdAt, updatedAt }
@@ -351,7 +353,7 @@ The API key is not part of persisted `Settings`. IndexedDB tables: `documents`, 
 
 ## Testing
 
-`npm test` runs 151 tests in 16 files:
+`npm test` runs 153 tests in 16 files:
 
 - placeholder resolution (`before_cursor`, `before_last_word`, paragraph, selection, case-insensitivity, unknown placeholders)
 - reference-file insertion, wrappers, auto-append, missing/unselected files, unreferenced warnings, oversized trim, files dropped by trimming
@@ -360,6 +362,7 @@ The API key is not part of persisted `Settings`. IndexedDB tables: `documents`, 
 - the reference-file panel rendering inside the document page (files listed, empty state)
 - the auto-run trigger (cooldown plus pointer movement, resting mouse, single fire, cancel) and the two-sentence rule appended to every system prompt
 - the draft column width preference (clamping, localStorage round-trip, unusable storage) and the version 4 upgrade that moves a leftover stacked layout beside the editor
+- nudger-owned files: per-nudger listing and ordering, same names on different nudgers, adoption of unassigned files, duplication and deletion cascades, the version 5 upgrade (shared file copied per nudger, replies rewired, unattached files kept as unassigned), and older exports migrated to the same shape
 - nudger → template conversion (placeholders and generation settings kept, files and document left behind) and template reuse in another document
 - IndexedDB storage, CRUD, cascades, budgets, settings key stripping, export/import, merge remapping, import network safety
 - provider request shapes for OpenAI-compatible and Anthropic, URL joining, model override fallback, reserved custom headers, loopback http, response size limits, auth/rate-limit/context/CORS/timeout errors

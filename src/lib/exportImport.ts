@@ -10,13 +10,22 @@ import type {
   Version,
 } from '../types';
 import { normalizeSettings } from './defaults';
+import { planFileOwnershipMigration } from './migrate';
 import { validateFileName } from './referenceFiles';
 import { newId, wordCount } from './util';
 import { GENERIC_FACTS_FOCUS } from './facts';
 
 
-/** 3 adds documentId to reference files. Versions 1 and 2 are still accepted. */
-export const SCHEMA_VERSION = 3;
+/**
+ * 1 → shared nudgers and a shared file library
+ * 2 → nudgers belong to a document
+ * 3 → reference files belong to a document
+ * 4 → reference files belong to a nudger (unassigned files have nudgerId: null)
+ *
+ * Older bundles are migrated on import with the same planning code the database
+ * upgrade uses.
+ */
+export const SCHEMA_VERSION = 4;
 
 export type ValidationResult =
   | { ok: true; bundle: ExportedBundle; warnings: string[] }
@@ -52,9 +61,9 @@ export function validateBundle(raw: unknown): ValidationResult {
   if (raw.app !== 'nudger') {
     errors.push('This does not look like a nudger export (missing "app": "nudger").');
   }
-  if (raw.schemaVersion !== 1 && raw.schemaVersion !== 2 && raw.schemaVersion !== SCHEMA_VERSION) {
+  if (typeof raw.schemaVersion !== 'number' || raw.schemaVersion < 1 || raw.schemaVersion > SCHEMA_VERSION) {
     errors.push(
-      `Unsupported export version: ${String(raw.schemaVersion)}. This build reads version 1, 2 and ${SCHEMA_VERSION} exports.`,
+      `Unsupported export version: ${String(raw.schemaVersion)}. This build reads versions 1 to ${SCHEMA_VERSION}.`,
     );
   }
   if (errors.length) return { ok: false, errors };
@@ -179,6 +188,7 @@ export function validateBundle(raw: unknown): ValidationResult {
       const file: ReferenceFile = {
         id,
         documentId,
+        nudgerId: null,
         name: valid.name,
         kind: valid.kind,
         content: item.content,
@@ -378,6 +388,32 @@ export function validateBundle(raw: unknown): ValidationResult {
     });
   }
 
+  // Reference files belong to a nudger. Bundles written before schema 4 (and
+  // files copied for several nudgers) are resolved with the same planning code
+  // the database upgrade uses: one independent copy per owning nudger, and
+  // files nobody attaches stay in the document as unassigned.
+  const plan = planFileOwnershipMigration(files, nudgers, replies);
+  if (plan.nudgerUpdates.length) {
+    const updates = new Map(plan.nudgerUpdates.map((update) => [update.id, update.fileIds]));
+    for (const nudger of nudgers) {
+      const next = updates.get(nudger.id);
+      if (next) nudger.fileIds = next;
+    }
+  }
+  if (plan.replyUpdates.length) {
+    const updates = new Map(plan.replyUpdates.map((update) => [update.id, update.fileIds]));
+    for (const reply of replies) {
+      const next = updates.get(reply.id);
+      if (next) reply.fileIds = next;
+    }
+  }
+  const unassigned = plan.files.filter((file) => !file.nudgerId).length;
+  if (unassigned) {
+    warnings.push(
+      `${unassigned} reference file${unassigned === 1 ? '' : 's'} in this export were not attached to a nudger, so they are imported as unassigned files of their document.`,
+    );
+  }
+
   const settings: Omit<Settings, 'apiKey'> = normalizeSettings(
     isObject(raw.settings) ? (raw.settings as Partial<Settings>) : undefined,
   );
@@ -391,7 +427,7 @@ export function validateBundle(raw: unknown): ValidationResult {
       exportedAt: asNumber(raw.exportedAt, Date.now()),
       documents,
       versions,
-      files,
+      files: plan.files,
       nudgers,
       replies,
       templates,

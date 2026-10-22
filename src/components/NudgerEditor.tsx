@@ -62,7 +62,6 @@ export function NudgerEditor({
   const updateDraft = (next: Partial<Nudger>) => patch(next);
 
   const attached = nudgerFiles(draft, files);
-  const selectedIds = new Set(draft.fileIds);
   const resolvedTemplate = templates.find((template) => template.id === draft.templateId);
   const chosenTemplate = templates.find((template) => template.id === templateChoice);
 
@@ -110,15 +109,6 @@ export function NudgerEditor({
     });
     setTemplateChoice(template.id);
     if (!quiet) notify(`Loaded “${template.name}” into this nudger.`, 'success');
-  };
-
-  const toggleFile = (id: string) => {
-    setDraft((current) => ({
-      ...current,
-      fileIds: current.fileIds.includes(id)
-        ? current.fileIds.filter((fileId) => fileId !== id)
-        : [...current.fileIds, id],
-    }));
   };
 
   const moveFile = (index: number, direction: -1 | 1) => {
@@ -392,7 +382,7 @@ export function NudgerEditor({
 
           <section className="field">
             <div className="field-head">
-              <span>Attached reference files</span>
+              <span>This nudger's reference files</span>
               <span className="field-note">{formatFileStats(attached)}</span>
             </div>
             {attached.length > 0 ? (
@@ -422,45 +412,17 @@ export function NudgerEditor({
                       >
                         ↓
                       </button>
-                      <button
-                        type="button"
-                        className="icon-btn small"
-                        onClick={() => toggleFile(id)}
-                        aria-label={`Detach ${file.name}`}
-                      >
-                        ×
-                      </button>
                     </li>
                   );
                 })}
               </ol>
             ) : (
-              <p className="field-note">No files attached.</p>
+              <p className="field-note">No files yet.</p>
             )}
-            {files.length === 0 ? (
-              <p className="field-note">
-                No reference files in this document yet.{' '}
-                <a href={document ? `#/doc/${encodeURIComponent(document.id)}/files` : '#/'}>
-                  Add one on the document's Files page.
-                </a>
-              </p>
-            ) : (
-              <details className="file-checklist">
-                <summary>Select files ({files.length} in this document)</summary>
-                <div className="file-checklist-grid">
-                  {files.map((file) => (
-                    <label key={file.id} className="checkbox-row">
-                      <input
-                        type="checkbox"
-                        checked={selectedIds.has(file.id)}
-                        onChange={() => toggleFile(file.id)}
-                      />
-                      <span>{file.name}</span>
-                    </label>
-                  ))}
-                </div>
-              </details>
-            )}
+            <p className="field-note">
+              Files belong to this nudger and only this nudger can read them. Add, edit, reorder or
+              delete them with the file button on its card after saving.
+            </p>
           </section>
 
           <div className="field-row">
