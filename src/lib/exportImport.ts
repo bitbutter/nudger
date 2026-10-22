@@ -12,6 +12,7 @@ import type {
 import { normalizeSettings } from './defaults';
 import { validateFileName } from './referenceFiles';
 import { wordCount } from './util';
+import { GENERIC_FACTS_FOCUS } from './facts';
 
 export type ValidationResult =
   | { ok: true; bundle: ExportedBundle; warnings: string[] }
@@ -165,6 +166,11 @@ export function validateBundle(raw: unknown): ValidationResult {
       enabled: asBoolean(item.enabled, true),
       done: asBoolean(item.done),
       budget: Math.max(0, Math.round(asNumber(item.budget, 3))),
+      facts: asBoolean(item.facts, false),
+      factsPrompt:
+        typeof item.factsPrompt === 'string' && item.factsPrompt.trim()
+          ? item.factsPrompt.trim()
+          : GENERIC_FACTS_FOCUS,
       order: asNumber(item.order, nudgers.length),
       templateId: typeof item.templateId === 'string' ? item.templateId : undefined,
       createdAt: asNumber(item.createdAt, Date.now()),
@@ -214,6 +220,8 @@ export function validateBundle(raw: unknown): ValidationResult {
               typeof item.usage.outputTokens === 'number' ? item.usage.outputTokens : undefined,
           }
         : undefined,
+      facts: asStringArray(item.facts).slice(0, 5),
+      factsError: typeof item.factsError === 'string' ? item.factsError : undefined,
     });
   }
 
@@ -237,6 +245,8 @@ export function validateBundle(raw: unknown): ValidationResult {
       description: asString(item.description),
       system: asString(item.system),
       prompt: item.prompt,
+      facts: asBoolean(item.facts, false),
+      factsPrompt: typeof item.factsPrompt === 'string' ? item.factsPrompt : undefined,
       builtin: false,
       createdAt: asNumber(item.createdAt, Date.now()),
       updatedAt: asNumber(item.updatedAt, asNumber(item.createdAt, Date.now())),

@@ -39,6 +39,8 @@ function baseBundle(): ExportedBundle {
         enabled: true,
         done: false,
         budget: 3,
+        facts: true,
+        factsPrompt: 'Focus on the notes.',
         order: 0,
         createdAt: now,
         updatedAt: now,
@@ -56,6 +58,7 @@ function baseBundle(): ExportedBundle {
         provider: 'deepseek',
         createdAt: now,
         status: 'new',
+        facts: ['400 tickets a week'],
       },
     ],
     templates: [
@@ -85,6 +88,9 @@ describe('export validation', () => {
     expect(result.bundle.versions).toHaveLength(1);
     expect(result.bundle.nudgers[0].fileIds).toEqual(['f1']);
     expect(result.bundle.replies[0].status).toBe('new');
+    expect(result.bundle.nudgers[0].facts).toBe(true);
+    expect(result.bundle.nudgers[0].factsPrompt).toBe('Focus on the notes.');
+    expect(result.bundle.replies[0].facts).toEqual(['400 tickets a week']);
     expect(JSON.stringify(result.bundle.settings)).not.toContain('sk-should-not-import');
   });
 

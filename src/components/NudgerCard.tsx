@@ -3,6 +3,7 @@ import type { Nudger, Reply, ReplyStatus } from '../types';
 import type { RunState } from '../lib/runManager';
 import { runStateMessage } from '../lib/runManager';
 import { copyText, formatRelative } from '../lib/util';
+import { GENERIC_FACTS_FOCUS } from '../lib/facts';
 import { useToast } from './Toast';
 
 type NudgerCardProps = {
@@ -80,6 +81,10 @@ function ReplyItem({ reply, compact, onStatus, onRetry }: ReplyItemProps) {
     const ok = await copyText(reply.resolvedPrompt);
     notify(ok ? 'Resolved prompt copied.' : 'Could not copy the prompt.', ok ? 'success' : 'error');
   };
+  const copyFacts = async () => {
+    const ok = await copyText((reply.facts ?? []).join('\n'));
+    notify(ok ? 'Fact clues copied.' : 'Could not copy the fact clues.', ok ? 'success' : 'error');
+  };
 
   return (
     <article className={`reply ${compact ? 'reply-compact' : ''} reply-${reply.status}`}>
@@ -91,6 +96,23 @@ function ReplyItem({ reply, compact, onStatus, onRetry }: ReplyItemProps) {
         </span>
       </header>
       <div className="reply-text">{reply.text}</div>
+      {reply.facts && reply.facts.length > 0 ? (
+        <div className="reply-facts">
+          <div className="reply-facts-head">
+            <span>Facts to check</span>
+            <span className="reply-facts-note">model-generated; verify</span>
+            <button type="button" className="link-btn" onClick={copyFacts}>
+              Copy
+            </button>
+          </div>
+          <ul>
+            {reply.facts.map((fact, index) => (
+              <li key={`${index}-${fact}`}>{fact}</li>
+            ))}
+          </ul>
+        </div>
+      ) : null}
+      {reply.factsError ? <p className="reply-facts-error">{reply.factsError}</p> : null}
       <div className="reply-actions">
         <button type="button" className="link-btn" onClick={copy}>
           Copy
@@ -194,6 +216,7 @@ export function NudgerCard({
             {used}/{nudger.budget}
           </span>
           {nudger.autoRun ? <span className="chip chip-auto">auto</span> : null}
+          {nudger.facts ? <span className="chip chip-auto">facts</span> : null}
           {busyElsewhere ? <span className="chip chip-warn">in another doc</span> : null}
           {nudger.done ? <span className="chip chip-done">done</span> : null}
           {!nudger.enabled ? <span className="chip">off</span> : null}
@@ -347,6 +370,20 @@ export function NudgerCard({
               onClick={(event) => { onUpdate({ done: !nudger.done }); closeMenu(event); }}
             >
               {nudger.done ? 'Reopen (not done)' : 'Mark done'}
+            </button>
+            <button
+              type="button"
+              onClick={(event) => {
+                onUpdate({
+                  facts: !nudger.facts,
+                  ...(!nudger.facts && !(nudger.factsPrompt ?? '').trim()
+                    ? { factsPrompt: GENERIC_FACTS_FOCUS }
+                    : {}),
+                });
+                closeMenu(event);
+              }}
+            >
+              Facts to check: {nudger.facts ? 'on' : 'off'}
             </button>
             <button
               type="button"

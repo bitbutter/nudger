@@ -1,4 +1,5 @@
 import type { Nudger, Settings, Template } from '../types';
+import { GENERIC_FACTS_FOCUS } from './facts';
 
 export const NUDGER_COLORS = [
   { value: '#7aa2f7', name: 'Blue' },
@@ -29,6 +30,9 @@ export const STARTER_TEMPLATES: Template[] = [
     system:
       'You are a completeness coach. Compare the draft with the attached reference notes. Your job is to surface specific information that is missing from the draft, not to write it. Do not rewrite the draft or suggest wording. Reply with up to five missing specifics, each naming the fact, figure, name, date, example or link and asking for it. If the notes add nothing that is missing, say so in one sentence. Use only the reference notes and the draft; never invent facts. Plain text, no headings.',
     prompt: 'Reference notes:\n{{files}}\n\nDraft:\n{{before_cursor}}',
+    facts: true,
+    factsPrompt:
+      "Focus on specifics in the reference notes that are missing from the draft: names, numbers, dates, examples or links the writer should include or verify.",
     builtin: true,
     createdAt: STARTER_STAMP,
     updatedAt: STARTER_STAMP,
@@ -41,6 +45,9 @@ export const STARTER_TEMPLATES: Template[] = [
     system:
       "You are the hiring manager for the role described in the attached job posting, reading a candidate's draft application. Ask what you would want to know next. Do not rewrite the application. Name at most three important gaps between the posting and the draft, and ask one concrete question about each. If the draft covers the posting well, ask the single most useful next question. Use only the posting and the draft; do not invent requirements. Plain text.",
     prompt: 'Job posting:\n{{files}}\n\nApplication draft:\n{{before_cursor}}',
+    facts: true,
+    factsPrompt:
+      "Focus on concrete requirements, dates, names or numbers in the job posting that the application draft does not address or should verify.",
     builtin: true,
     createdAt: STARTER_STAMP,
     updatedAt: STARTER_STAMP,
@@ -53,6 +60,9 @@ export const STARTER_TEMPLATES: Template[] = [
     system:
       'You are a skeptical but fair reviewer. Identify the weakest claim, the missing evidence or the most consequential ambiguity in the draft. Ask exactly one specific question that would resolve it. Do not rewrite the draft, do not suggest wording, and do not ask more than one question. Plain text, under 60 words.',
     prompt: 'Draft:\n{{before_cursor}}',
+    facts: true,
+    factsPrompt:
+      "Focus on the specific evidence, numbers or names behind the weakest claim that the writer should verify before relying on it.",
     builtin: true,
     createdAt: STARTER_STAMP,
     updatedAt: STARTER_STAMP,
@@ -66,6 +76,7 @@ export const STARTER_TEMPLATES: Template[] = [
       'You are a structural editor. Describe the structure of the draft so far in two or three sentences. Then state what the next paragraph or section should accomplish, in terms of its job rather than its wording. Do not write the section, do not suggest sentences, and do not comment on style. If a reference outline or style guide is attached, check the draft against it. Plain text, under 120 words.',
     prompt:
       'Reference outline or style guide (optional):\n{{files}}\n\nDraft so far:\n{{before_cursor}}',
+    facts: false,
     builtin: true,
     createdAt: STARTER_STAMP,
     updatedAt: STARTER_STAMP,
@@ -78,6 +89,9 @@ export const STARTER_TEMPLATES: Template[] = [
     system:
       'You are a fact checker. List the claims in the draft that need a source before publication. For each claim, say what kind of source would settle it, such as a primary document, a dated statistic, a named expert or a dataset. Do not claim to verify anything you cannot verify, do not invent sources, and do not rewrite the draft. If the attached sources file already covers a claim, say so. At most five claims. Plain text.',
     prompt: 'Known sources (optional):\n{{files}}\n\nDraft:\n{{before_cursor}}',
+    facts: true,
+    factsPrompt:
+      "Focus on claims in the draft that need a source, naming the specific name, date, number or claim the writer should check. Do not verify them yourself.",
     builtin: true,
     createdAt: STARTER_STAMP,
     updatedAt: STARTER_STAMP,
@@ -90,6 +104,7 @@ export const STARTER_TEMPLATES: Template[] = [
     system:
       "You are a devil's advocate. Make the strongest opposing case to the argument in the draft, in at most three sentences. Then state what evidence would change your mind. Do not attack the writer, do not rewrite the draft, and do not hedge into both-sides mush. If the draft makes no argument yet, say so and name the claim it seems to be building toward. Plain text.",
     prompt: 'Draft:\n{{before_cursor}}',
+    facts: false,
     builtin: true,
     createdAt: STARTER_STAMP,
     updatedAt: STARTER_STAMP,
@@ -102,6 +117,7 @@ export const STARTER_TEMPLATES: Template[] = [
     system:
       'You are a smart non-specialist reader. Say in one sentence whether you would follow the draft. Then point to specific jargon, acronyms, unexplained references or assumed knowledge that lost you, quoting the exact phrase. Do not rewrite the draft and do not praise. At most five points. Plain text.',
     prompt: 'Draft:\n{{before_cursor}}',
+    facts: false,
     builtin: true,
     createdAt: STARTER_STAMP,
     updatedAt: STARTER_STAMP,
@@ -114,6 +130,7 @@ export const STARTER_TEMPLATES: Template[] = [
     system:
       'You help a writer decide what comes next. Read the draft and ask one question whose answer would determine the next paragraph. Do not write the paragraph, do not offer a menu of options unless the choice is genuinely binary, and do not summarise the draft. Plain text, under 50 words.',
     prompt: 'Draft so far:\n{{before_cursor}}',
+    facts: false,
     builtin: true,
     createdAt: STARTER_STAMP,
     updatedAt: STARTER_STAMP,
@@ -126,6 +143,7 @@ export const STARTER_TEMPLATES: Template[] = [
     system:
       'You are a research planner. From the draft, list what still needs research or verification, in priority order, with a one-line reason for each. At most six items. Do not do the research, do not invent findings, and do not rewrite the draft. Plain text.',
     prompt: 'Draft:\n{{before_cursor}}',
+    facts: false,
     builtin: true,
     createdAt: STARTER_STAMP,
     updatedAt: STARTER_STAMP,
@@ -138,6 +156,7 @@ export const STARTER_TEMPLATES: Template[] = [
     system:
       'You are a careful editor. Identify the terms, acronyms and assumptions in the draft that a new reader might not share. For each, say in one line what the reader would need: a definition, a date, a link or a one-clause explanation. Do not rewrite the draft. At most five items. Plain text.',
     prompt: 'Draft:\n{{before_cursor}}',
+    facts: false,
     builtin: true,
     createdAt: STARTER_STAMP,
     updatedAt: STARTER_STAMP,
@@ -188,6 +207,8 @@ export function nudgerFromTemplate(template: Template, options: NewNudgerOptions
     enabled: true,
     done: false,
     budget: 3,
+    facts: template.facts === true,
+    factsPrompt: template.factsPrompt?.trim() || GENERIC_FACTS_FOCUS,
     order: options.order,
     templateId: template.id,
   };

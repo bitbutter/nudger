@@ -165,8 +165,17 @@ describe('export and import', () => {
     const doc = await store.createDocument('Doc', 'Hello');
     await store.createVersion(doc.id, 'v1');
     const file = await store.createFile('notes.md', 'attached fact');
-    const nudger = await store.createNudger(newNudgerInput({ fileIds: [file.id] }));
-    await store.addReply(testReplyInput(doc.id, nudger.id));
+    const nudger = await store.createNudger(
+      newNudgerInput({
+        fileIds: [file.id],
+        facts: true,
+        factsPrompt: 'Focus on the attached notes.',
+      }),
+    );
+    await store.addReply({
+      ...testReplyInput(doc.id, nudger.id),
+      facts: ['1.2 million requests (notes.md)'],
+    });
     await store.setSettings({ ...DEFAULT_SETTINGS, model: 'gpt-test', apiKey: 'sk-secret' });
 
     const bundle = await store.exportAll();
@@ -189,6 +198,9 @@ describe('export and import', () => {
     });
     expect((await store.listDocuments())[0].currentText).toBe('Hello');
     expect((await store.listFiles())[0].content).toBe('attached fact');
+    expect((await store.getNudger(nudger.id))?.facts).toBe(true);
+    expect((await store.getNudger(nudger.id))?.factsPrompt).toBe('Focus on the attached notes.');
+    expect((await store.listReplies(doc.id))[0].facts).toEqual(['1.2 million requests (notes.md)']);
     expect((await store.getSettings()).model).toBe('gpt-test');
   });
 
@@ -252,6 +264,8 @@ describe('export and import', () => {
         enabled: true,
         done: false,
         budget: 3,
+        facts: false,
+        factsPrompt: 'Focus on concrete specifics the writer should verify.',
         order: 0,
         createdAt: 1,
         updatedAt: 1,

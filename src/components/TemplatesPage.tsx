@@ -5,7 +5,9 @@ import { blankTemplate } from '../lib/starters';
 import { CONTEXT_PLACEHOLDERS, CONTEXT_PLACEHOLDER_HELP, hasContextPlaceholder, listFilePlaceholders } from '../lib/placeholders';
 import { prepareRun } from '../lib/run';
 import { newId } from '../lib/util';
+import { GENERIC_FACTS_FOCUS } from '../lib/facts';
 import { ConfirmDialog, Modal } from './Modal';
+import { FactsFields } from './FactsFields';
 import { useToast } from './Toast';
 
 type TemplatesPageProps = {
@@ -58,6 +60,8 @@ function TemplateEditor({
       enabled: true,
       done: false,
       budget: 3,
+      facts: draft.facts === true,
+      factsPrompt: draft.factsPrompt || GENERIC_FACTS_FOCUS,
       order: 0,
       createdAt: 0,
       updatedAt: 0,
@@ -170,6 +174,13 @@ function TemplateEditor({
               disabled={readOnly}
             />
           </label>
+          <FactsFields
+            enabled={draft.facts === true}
+            focus={draft.factsPrompt || GENERIC_FACTS_FOCUS}
+            disabled={readOnly}
+            onChange={(patch) => setDraft({ ...draft, ...patch })}
+          />
+
           <details className="placeholder-help" open>
             <summary>Available placeholders</summary>
             <div className="placeholder-table">
@@ -343,6 +354,7 @@ export function TemplatesPage({
                 <div className="template-card-head">
                   <h3>{template.name}</h3>
                   <span className="chip chip-auto">custom</span>
+                  {template.facts ? <span className="chip chip-auto">facts</span> : null}
                 </div>
                 <p>{template.description || 'No description.'}</p>
                 <div className="template-card-actions">

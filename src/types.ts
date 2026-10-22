@@ -59,6 +59,10 @@ export type Nudger = {
   done: boolean;
   /** Reply allowance for this nudger, counted per document. "More" adds 3. */
   budget: number;
+  /** Ask for a "Facts to check" list under each reply. Off by default. */
+  facts: boolean;
+  /** The role-specific focus for the fact-clue list; the output format is fixed. */
+  factsPrompt: string;
   order: number;
   /** Starter or custom template this nudger was created from, for "reset to starter". */
   templateId?: string;
@@ -82,6 +86,10 @@ export type Reply = {
   status: ReplyStatus;
   error?: string;
   usage?: { inputTokens?: number; outputTokens?: number };
+  /** Model-generated specifics to verify; never treated as verified facts. */
+  facts?: string[];
+  /** Set only when a fact list was requested but could not be produced. */
+  factsError?: string;
 };
 
 export type Template = {
@@ -90,6 +98,9 @@ export type Template = {
   description: string;
   system: string;
   prompt: string;
+  /** Optional defaults carried into nudgers created from this template. */
+  facts?: boolean;
+  factsPrompt?: string;
   builtin: boolean;
   createdAt: number;
   updatedAt: number;

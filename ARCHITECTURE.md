@@ -14,6 +14,7 @@ The local database is the source of truth. IndexedDB (`nudger`) holds seven tabl
 | IndexedDB schema and store | `src/lib/db.ts`, `src/lib/storage.ts` |
 | Defaults and starter library | `src/lib/defaults.ts`, `src/lib/starters.ts` |
 | Placeholder resolution | `src/lib/placeholders.ts` |
+| Fact-clue protocol and parsing | `src/lib/facts.ts`, `src/components/FactsFields.tsx` |
 | File wrappers, validation, upload names | `src/lib/referenceFiles.ts` |
 | Provider adapters and errors | `src/lib/providers.ts`, `src/lib/errors.ts` |
 | Run preparation, execution, retries | `src/lib/run.ts` |
@@ -33,10 +34,11 @@ The local database is the source of truth. IndexedDB (`nudger`) holds seven tabl
 1. `App` subscribes to documents, nudgers, files, templates, settings, version counts, and the active document's replies and versions with Dexie live queries. DB writes therefore update the UI without manual refetching.
 2. The active draft text is local React state (`useDraft`). Every change schedules a 450 ms IndexedDB write. Changing documents flushes the previous draft first. A draft is also flushed before Save version, Restore, Duplicate, Export, Delete and Import, so operations never read a stale database copy.
 3. A run snapshots the current in-memory text, the caret (`selectionStart`/`selectionEnd`), the document title, the full file library and the settings, then calls `prepareRun`. Resolution happens at that moment, not when the prompt was saved.
-4. `prepareRun` resolves the system and user prompts, handles file insertion/auto-append, collects blocking/warning issues, computes characters and estimated tokens, and checks `maxContextChars`. It returns a `PreparedRun` containing the exact text, files to send, issues and the provider configuration.
+4. `prepareRun` resolves the system and user prompts, handles file insertion/auto-append, collects blocking/warning issues, computes characters and estimated tokens, and checks `maxContextChars`. When the nudger's `facts` flag is on, the fixed fact-clue JSON protocol is appended to the resolved system prompt (the focus text comes from `factsPrompt`). It returns a `PreparedRun` containing the exact text, files to send, issues and the provider configuration.
 5. Manual Run and Run all send eligible prepared jobs to `RunManager`. The manager guarantees one in-flight job per nudger and a configurable global concurrency limit; extras queue. It owns abort controllers and emits per-nudger state (queued/running/retrying/error) scoped by `documentId`.
-6. `executeRun` calls the provider adapter, retries 429/5xx with backoff when the wait is short, then stores a `Reply` through `addReply`. The reply includes the exact `resolvedPrompt`, the sent file ids, provider and model; editing sources later cannot rewrite that record. `addReply` refuses to create orphans if the document or nudger was deleted while the model was working.
-7. `RunManager` state is filtered to the active document in the UI, so a run in document A cannot show a Cancel button on document B. Deleting a document cancels its jobs; deleting a nudger cancels its job.
+6. `executeRun` calls the provider adapter, retries 429/5xx with backoff when the wait is short, then parses the response. With facts off the response is the reply. With facts on the response must be `{"reply":"...","facts":[...]}`; `parseStructuredNudge` strips fences/prose, recovers a usable reply if possible, parses and normalizes the fact list (max five, deduped, strings or `{text}` objects), and falls back to plain prose as the reply while recording `factsError`. A JSON-shaped response that cannot be recovered becomes a clear `bad_request` failure with Retry rather than being saved as raw text.
+7. The parsed reply is stored through `addReply` with the exact `resolvedPrompt`, sent file ids, provider, model, facts and facts error. Editing sources later cannot rewrite that record. `addReply` refuses to create orphans if the document or nudger was deleted while the model was working.
+8. `RunManager` state is filtered to the active document in the UI, so a run in document A cannot show a Cancel button on document B. Deleting a document cancels its jobs; deleting a nudger cancels its job.
 
 ## Placeholder resolution
 
@@ -50,6 +52,12 @@ The local database is the source of truth. IndexedDB (`nudger`) holds seven tabl
 `prepareRun` resolves system and user messages separately, gathers used files across both, and applies the auto-append rule only to the user message. If neither message contains a file placeholder, all attached files are appended under `REFERENCE FILES`; if either does, only the placeholders insert content and every attached file that was not used is reported. Every file is wrapped as reference data with begin/end markers.
 
 Trimming is explicit: `trimPromptMiddle` keeps the start and end of an oversized user prompt, drops the middle with a visible marker, and the preview is recomputed so the user sees exactly what will be sent.
+
+### Fact clues
+
+Fact clues are a per-nudger option, not a document-wide feature. The system-prompt protocol is fixed; only the focus sentence is stored per nudger (`factsPrompt`). The model returns one JSON object containing both the reply and the facts, so the reply and its clues come from one reading of one request. The protocol adds roughly 100 tokens; there is no second provider call.
+
+The parser is deliberately layered: JSON object → fenced/prose-wrapped JSON → a reply/facts regex recovery → an old trailing `FACTS:` line fallback → plain prose as the reply with `factsError`. A response that starts like JSON and cannot be recovered fails the run rather than displaying JSON as prose. Facts are labeled model-generated and are never treated as verified. The starter library enables facts for the four fact-oriented roles; custom and style/continuation nudgers default off.
 
 ## Provider layer
 
@@ -80,11 +88,11 @@ Exports are validated with `validateBundle` before import: schema version, requi
 - No third-party scripts, fonts, analytics or telemetry. The production build injects a meta CSP with `script-src 'self'`; `connect-src https:` is broad only because custom provider endpoints are allowed. This is documented in the README as a deliberate tradeoff.
 - All model output and stored prompts are rendered as text (`white-space: pre-wrap`), never as HTML.
 - Keys are masked in UI, kept out of IndexedDB and exports, never logged, and sent only to the configured provider. Loading settings does not silently migrate or delete keys.
-- Text leaves the browser only on an explicit run/test, and the preview shows the exact request.
+- Text leaves the browser only on an explicit run/test, and the preview shows the exact request. Fact clues use the same single request; there is no separate extraction request.
 
 ## Testing
 
-Vitest runs in Node with `fake-indexeddb`. Tests cover placeholder semantics, file insertion and auto-append, trimming, version restore, storage/CRUD/cascades, import/export safety, provider request shapes and error classification, retry/cancel, hash routing, key storage, the starter library and a mocked end-to-end run. Browser checks were performed separately with a production preview and a real DeepSeek key; those scripts are not part of the shipped app.
+Vitest runs in Node with `fake-indexeddb`. Tests cover placeholder semantics, file insertion and auto-append, trimming, version restore, storage/CRUD/cascades, import/export safety, provider request shapes and error classification, retry/cancel, hash routing, key storage, the starter library, the fact protocol/parsing (including malformed JSON and plain-text fallback), and a mocked end-to-end run. Browser checks were performed separately with a production preview and a real DeepSeek key; those scripts are not part of the shipped app.
 
 ## Deployment
 

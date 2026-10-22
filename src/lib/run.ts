@@ -1,7 +1,7 @@
 import type { Caret, Document, Nudger, ReferenceFile, Reply, Settings } from '../types';
 import { asNudgeError, NudgeError } from './errors';
 import type { ResolvedProvider, ModelUsage } from './providers';
-import { callModel, resolveProviderConfig, effectiveCustomHeaders } from './providers';
+import { callModel, resolveProviderConfig } from './providers';
 import {
   resolveTemplateText,
   selectedFilesForNudger,
@@ -9,6 +9,11 @@ import {
 } from './placeholders';
 import { appendFilesSection } from './referenceFiles';
 import { estimateTokens } from './util';
+import {
+  buildFactsInstruction,
+  GENERIC_FACTS_FOCUS,
+  parseStructuredNudge,
+} from './facts';
 
 export type PrepareOptions = {
   nudger: Nudger;
@@ -28,7 +33,7 @@ export type PreparedRun = {
   documentTitle: string;
   system: string;
   prompt: string;
-  /** Human-readable exact record of both messages. Also stored on each reply. */
+  /** Human-readable record of the exact messages sent for the main request. */
   fullPrompt: string;
   issues: TemplateIssue[];
   blocking: boolean;
@@ -44,6 +49,9 @@ export type PreparedRun = {
   resolved: ResolvedProvider;
   fileIds: string[];
   hadFilePlaceholder: boolean;
+  /** When true, the model returns {"reply": "...", "facts": [...]} in one response. */
+  facts: boolean;
+  factsPrompt: string;
 };
 
 export function formatResolvedPrompt(system: string, user: string): string {
@@ -71,11 +79,7 @@ export function truncateWithMarker(text: string, limit: number): string {
 export function trimPromptMiddle(text: string, limit: number): string {
   if (limit <= 0) return '';
   if (text.length <= limit) return text;
-  const marker = `
-
-[TRUNCATED BY NUDGER: the middle of this prompt was removed to stay under the ${limit.toLocaleString()} character limit. The text on either side of this marker is what will be sent. Nothing else is sent.]
-
-`;
+  const marker = `\n\n[TRUNCATED BY NUDGER: the middle of this prompt was removed to stay under the ${limit.toLocaleString()} character limit. The text on either side of this marker is what will be sent. Nothing else is sent.]\n\n`;
   const room = Math.max(0, limit - marker.length);
   const head = Math.floor(room * 0.45);
   const tail = room - head;
@@ -154,7 +158,12 @@ export function prepareRun(options: PrepareOptions): PreparedRun {
       : undefined;
 
   const maxContextChars = Math.max(1_000, nudger.maxContextChars || settings.maxContextChars);
+  const facts = nudger.facts === true;
+  const factsPrompt = (nudger.factsPrompt || '').trim() || GENERIC_FACTS_FOCUS;
   let system = systemResolution.text;
+  if (facts) {
+    system = [system.trim(), buildFactsInstruction(factsPrompt)].filter(Boolean).join('\n\n');
+  }
   let overLimit = system.length + prompt.length > maxContextChars;
   let trimmed = false;
   if (overLimit && options.trimToLimit) {
@@ -190,6 +199,8 @@ export function prepareRun(options: PrepareOptions): PreparedRun {
     resolved,
     fileIds: sentFiles.map((file) => file.id),
     hadFilePlaceholder,
+    facts,
+    factsPrompt,
   };
 }
 
@@ -236,6 +247,7 @@ export async function executeRun(
   saveReply: SaveReply,
 ): Promise<{ reply: Reply; usage?: ModelUsage; latencyMs: number }> {
   const { prepared } = job;
+  const started = Date.now();
   let lastError: NudgeError | null = null;
   const maxAttempts = Math.max(1, job.maxRetries + 1);
 
@@ -250,23 +262,43 @@ export async function executeRun(
         timeoutMs: job.timeoutMs,
         signal: handlers.signal,
       });
+
+      const parsed = prepared.facts
+        ? parseStructuredNudge(result.text)
+        : { text: result.text, facts: [] as string[], factsError: undefined };
+
+      if (parsed.malformedJson) {
+        throw new NudgeError(
+          'bad_request',
+          'The model returned malformed JSON for the reply and fact list. The reply was not saved. Retry, or turn off fact clues. If the model was cut off, raise max tokens.',
+        );
+      }
+      if (!parsed.text.trim()) {
+        throw new NudgeError(
+          'empty',
+          'The model returned no reply text. Retry, or turn off fact clues if the JSON protocol is causing trouble.',
+        );
+      }
+
       let reply: Reply;
       try {
         reply = await saveReply({
           documentId: prepared.documentId,
           nudgerId: prepared.nudgerId,
-          text: result.text,
+          text: parsed.text,
           resolvedPrompt: prepared.fullPrompt,
           fileIds: prepared.fileIds,
           model: prepared.resolved.model,
           provider: prepared.resolved.providerId,
           usage: result.usage,
+          facts: parsed.facts.length ? parsed.facts : undefined,
+          factsError: parsed.factsError,
         });
       } catch (error) {
         const detail = error instanceof Error ? error.message : String(error);
         throw new NudgeError('storage', `The reply arrived but could not be saved: ${detail}`);
       }
-      return { reply, usage: result.usage, latencyMs: result.latencyMs };
+      return { reply, usage: result.usage, latencyMs: Date.now() - started };
     } catch (error) {
       const nudgeError = asNudgeError(error);
       lastError = nudgeError;
@@ -290,8 +322,4 @@ export async function executeRun(
     }
   }
   throw lastError ?? new NudgeError('unknown', 'The run failed.');
-}
-
-export function prepareCustomHeaders(settings: Settings): Record<string, string> {
-  return effectiveCustomHeaders(settings);
 }

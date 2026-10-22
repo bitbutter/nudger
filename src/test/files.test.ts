@@ -106,6 +106,32 @@ describe('prepareRun file handling', () => {
     expect(withTrim.prompt).toContain('TAIL-MARKER');
   });
 
+  it('puts the fact protocol in the main system prompt only when facts are on', () => {
+    const withoutFacts = prepareRun({
+      nudger: testNudger({ facts: false }),
+      document: doc,
+      caret: { start: 5, end: 5 },
+      files: [],
+      settings: testSettings,
+    });
+    expect(withoutFacts.facts).toBe(false);
+    expect(withoutFacts.system).not.toContain('FACT CLUES PROTOCOL');
+
+    const withFacts = prepareRun({
+      nudger: testNudger({ facts: true, factsPrompt: 'Focus on dates in the notes.' }),
+      document: doc,
+      caret: { start: 5, end: 5 },
+      files: [],
+      settings: testSettings,
+    });
+    expect(withFacts.facts).toBe(true);
+    expect(withFacts.system).toContain('FACT CLUES PROTOCOL');
+    expect(withFacts.system).toContain('Focus on dates in the notes.');
+    expect(withFacts.system).toContain('"reply"');
+    expect(withFacts.system).toContain('"facts"');
+    expect(withFacts.fullPrompt).toContain('FACT CLUES PROTOCOL');
+  });
+
   it('resolves placeholders at run time, not when the nudger was created', () => {
     const nudger = testNudger({ prompt: 'Draft:\n{{before_cursor}}' });
     const first = prepareRun({

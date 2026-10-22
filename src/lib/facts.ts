@@ -1,0 +1,150 @@
+/**
+ * When fact clues are enabled, one request returns one JSON object containing
+ * both the reply and the facts:
+ *
+ *   {"reply":"...","facts":["..."]}
+ *
+ * The nudge is never lost silently: a plain-text response is kept as the reply
+ * (without facts), and a malformed JSON response is surfaced as a retryable
+ * error rather than rendered as raw data.
+ *
+ * Facts are model-generated clues to verify, not verified facts.
+ */
+
+export const GENERIC_FACTS_FOCUS =
+  'Focus on concrete specifics the writer should verify or might need to look up to avoid a mistake.';
+
+export function buildFactsInstruction(focus: string): string {
+  return [
+    'FACT CLUES PROTOCOL',
+    `Focus: ${(focus || '').trim() || GENERIC_FACTS_FOCUS}`,
+    'Return exactly one JSON object and nothing else:',
+    '{"reply":"<your full reply>","facts":["clue one","clue two"]}',
+    '- "reply" is the complete text you would otherwise have written to the writer. Keep your normal format, length and tone. Do not mention this JSON protocol in it. Escape line breaks as \\n.',
+    '- "facts" contains up to five concrete specifics from the supplied material (the draft and attached files): names, dates, numbers, examples or links the writer should verify or might need to look up. Use only the supplied material; never invent. Prefer exact values or short quotes. If a clue comes from a named file, include the file name in parentheses. If there are none, use [].',
+    '- Return valid JSON with no markdown fences and no text outside the object.',
+  ].join('\n');
+}
+
+function normalizeFacts(value: unknown): string[] {
+  const list =
+    typeof value === 'string' ? value.split(/\s*[|;]\s*/) : Array.isArray(value) ? value : [];
+  if (!list.length) return [];
+  const facts: string[] = [];
+  for (const item of list) {
+    let raw = '';
+    if (typeof item === 'string') raw = item;
+    else if (item && typeof item === 'object' && typeof (item as { text?: unknown }).text === 'string') {
+      raw = String((item as { text: string }).text);
+    }
+    const fact = raw.trim().replace(/^[-•]\s*/, '').slice(0, 300);
+    if (!fact) continue;
+    if (/^none\.?$/i.test(fact)) continue;
+    if (facts.some((existing) => existing.toLowerCase() === fact.toLowerCase())) continue;
+    facts.push(fact);
+    if (facts.length >= 5) break;
+  }
+  return facts;
+}
+
+function stripFences(text: string): string {
+  return text
+    .replace(/^```(?:json)?\s*/i, '')
+    .replace(/\s*```$/i, '')
+    .trim();
+}
+
+function decodeJsonString(raw: string): string {
+  try {
+    return JSON.parse(`"${raw}"`) as string;
+  } catch {
+    return raw.replace(/\\n/g, '\n').replace(/\\"/g, '"');
+  }
+}
+
+export type ParsedNudge = {
+  text: string;
+  facts: string[];
+  /** Set when the reply was usable but no structured fact list was returned. */
+  factsError?: string;
+  /** Set when the response looked like JSON and could not be recovered. */
+  malformedJson?: boolean;
+};
+
+export function parseStructuredNudge(raw: string): ParsedNudge {
+  const text = raw.trim();
+  if (!text) return { text: '', facts: [], malformedJson: true };
+
+  const stripped = stripFences(text);
+  const candidates = [stripped];
+  const firstBrace = stripped.indexOf('{');
+  const lastBrace = stripped.lastIndexOf('}');
+  if (firstBrace >= 0 && lastBrace > firstBrace) {
+    candidates.push(stripped.slice(firstBrace, lastBrace + 1));
+  }
+
+  for (const candidate of candidates) {
+    try {
+      const parsed: unknown = JSON.parse(candidate);
+      if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) continue;
+      const record = parsed as Record<string, unknown>;
+      const reply =
+        typeof record.reply === 'string'
+          ? record.reply
+          : typeof record.nudge === 'string'
+            ? record.nudge
+            : '';
+      const facts = normalizeFacts(record.facts);
+      if (reply.trim()) return { text: reply.trim(), facts };
+      if (facts.length > 0) return { text: '', facts, malformedJson: true };
+    } catch {
+      // Try the next candidate or the recovery paths.
+    }
+  }
+
+  // A slightly malformed object can still contain a usable reply string.
+  const replyMatch = /"reply"\s*:\s*"((?:[^"\\]|\\.)*)"/s.exec(stripped);
+  const nudgeMatch = /"nudge"\s*:\s*"((?:[^"\\]|\\.)*)"/s.exec(stripped);
+  const recoveredReply = decodeJsonString((replyMatch ?? nudgeMatch)?.[1] ?? '');
+  const factsMatch = /"facts"\s*:\s*\[([\s\S]*?)\]/.exec(stripped);
+  if (recoveredReply.trim()) {
+    const recoveredFacts = factsMatch
+      ? normalizeFacts(
+          [...factsMatch[1].matchAll(/"((?:[^"\\]|\\.)*)"/g)].map((match) =>
+            decodeJsonString(match[1]),
+          ),
+        )
+      : [];
+    return {
+      text: recoveredReply.trim(),
+      facts: recoveredFacts,
+      factsError: recoveredFacts.length ? undefined : 'The structured fact list could not be recovered.',
+    };
+  }
+
+  // The model ignored the JSON protocol but followed the old trailing-line
+  // convention. Keep the reply and the facts instead of failing the run.
+  const lines = stripped.split('\n');
+  for (let index = lines.length - 1; index >= 0; index -= 1) {
+    if (/^\s*FACTS\s*:/i.test(lines[index])) {
+      const value = lines[index].replace(/^\s*FACTS\s*:\s*/i, '').trim();
+      const facts = /^none\.?$/i.test(value)
+        ? []
+        : normalizeFacts(value.split(/\s*[|;]\s*/));
+      const before = lines.slice(0, index).join('\n').trim();
+      if (before) return { text: before, facts };
+    }
+  }
+
+  // If it was JSON-shaped, do not show a broken blob as prose.
+  if (/^[{[]/.test(stripped)) {
+    return { text: '', facts: [], malformedJson: true };
+  }
+
+  // Plain prose: preserve the nudge, report that the fact list is missing.
+  return {
+    text,
+    facts: [],
+    factsError: 'The model returned a plain reply without the structured fact list.',
+  };
+}

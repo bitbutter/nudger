@@ -128,8 +128,7 @@ export default function App() {
   const managerRef = useRef<RunManager | null>(null);
   if (!managerRef.current) {
     managerRef.current = new RunManager({
-      execute: async (job, handlers) =>
-        (await executeRun(job, handlers, (input) => store.addReply(input))).reply,
+      execute: async (job, handlers) => (await executeRun(job, handlers, (input) => store.addReply(input))).reply,
       onStates: setRunStates,
       onError: (state) => {
         const name = nudgersRef.current.find((nudger) => nudger.id === state.nudgerId)?.name ?? 'Nudger';

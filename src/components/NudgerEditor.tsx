@@ -1,6 +1,7 @@
 import { useMemo, useRef, useState } from 'react';
 import type { Caret, Nudger, ProviderId, ReferenceFile, Settings, Template } from '../types';
 import { Modal } from './Modal';
+import { FactsFields } from './FactsFields';
 import { NUDGER_COLORS, DEFAULT_NUDGER_COLOR } from '../lib/starters';
 import { PROVIDER_PRESETS, getProviderPreset } from '../lib/providers';
 import {
@@ -14,6 +15,7 @@ import {
 import { prepareRun } from '../lib/run';
 import { clamp, formatChars } from '../lib/util';
 import { formatFileStats, nudgerFiles } from '../lib/referenceFiles';
+import { GENERIC_FACTS_FOCUS } from '../lib/facts';
 import { useToast } from './Toast';
 
 type NudgerEditorProps = {
@@ -51,6 +53,7 @@ export function NudgerEditor({
   const promptRef = useRef<HTMLTextAreaElement>(null);
 
   const patch = (next: Partial<Nudger>) => setDraft((current) => ({ ...current, ...next }));
+  const updateDraft = (next: Partial<Nudger>) => patch(next);
 
   const attached = nudgerFiles(draft, files);
   const selectedIds = new Set(draft.fileIds);
@@ -162,6 +165,8 @@ export function NudgerEditor({
       maxTokens: Math.round(clamp(draft.maxTokens, 1, 64_000)),
       maxContextChars: Math.round(clamp(draft.maxContextChars, 1_000, 2_000_000)),
       budget: Math.round(clamp(draft.budget, 0, 10_000)),
+      facts: draft.facts === true,
+      factsPrompt: draft.factsPrompt?.trim() || GENERIC_FACTS_FOCUS,
     };
   };
 
@@ -500,6 +505,12 @@ export function NudgerEditor({
             </label>
           </div>
 
+          <FactsFields
+            enabled={draft.facts === true}
+            focus={draft.factsPrompt || GENERIC_FACTS_FOCUS}
+            onChange={(patch) => updateDraft(patch)}
+          />
+
           <div className="checkbox-stack">
             <label className="checkbox-row">
               <input
@@ -595,6 +606,13 @@ export function NudgerEditor({
             </div>
             <pre>{prepared.prompt || '(empty)'}</pre>
           </section>
+          {prepared.facts ? (
+            <p className="field-note">
+              The system prompt above includes the fact-clue JSON protocol. The reply and facts arrive
+              in one response; a plain-text response is kept as the reply and marked as having no
+              structured fact list.
+            </p>
+          ) : null}
           <p className="privacy-inline">
             This preview updates as you type. Only this text is sent when the nudger runs.
           </p>

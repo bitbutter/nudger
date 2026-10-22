@@ -46,5 +46,26 @@ describe('starter library', () => {
     expect(nudger.autoRun).toBe(false);
     expect(nudger.maxContextChars).toBe(DEFAULT_SETTINGS.maxContextChars);
     expect(nudger.description).toBe(template.description);
+    expect(nudger.facts).toBe(true);
+    expect(nudger.factsPrompt).toContain('evidence');
+  });
+
+  it('turns fact clues on only for fact-oriented starters', () => {
+    const byName = Object.fromEntries(STARTER_TEMPLATES.map((template) => [template.name, template]));
+    expect(byName['Completeness coach'].facts).toBe(true);
+    expect(byName['Hiring manager'].facts).toBe(true);
+    expect(byName['Skeptical reviewer'].facts).toBe(true);
+    expect(byName['Fact checker'].facts).toBe(true);
+    for (const name of [
+      'Structural editor',
+      "Devil's advocate",
+      'Audience check',
+      'Continuation prompter',
+      'Research planner',
+      'Definition explainer',
+    ]) {
+      expect(byName[name].facts).toBe(false);
+    }
+    expect(byName['Fact checker'].factsPrompt).toContain('need a source');
   });
 });

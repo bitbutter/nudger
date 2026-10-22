@@ -111,6 +111,10 @@ export function PromptPreview({
           <span>File source</span>
           <strong>{prepared.autoAppended ? 'auto-appended' : prepared.hadFilePlaceholder ? 'template placeholders' : 'none'}</strong>
         </div>
+        <div>
+          <span>Fact clues</span>
+          <strong>{prepared.facts ? 'same response' : 'off'}</strong>
+        </div>
       </div>
 
       {prepared.autoAppended ? (
@@ -190,11 +194,20 @@ export function PromptPreview({
           </div>
           <pre>{prepared.prompt || '(empty)'}</pre>
         </section>
+        {prepared.facts ? (
+          <p className="issue issue-info">
+            Fact clues are requested in the same JSON response: {'{"reply":"...","facts":[...]}'}.
+            If the model ignores the format, the plain reply is kept and the fact list is marked
+            missing. A malformed JSON response is shown as an error with a retry instead of being
+            rendered as text.
+          </p>
+        ) : null}
       </div>
 
       <p className="privacy-inline">
-        This is the entire request. Only this text is sent, and only to {prepared.resolved.preset.label}{' '}
-        when you press Run. The base URL is {prepared.resolved.baseUrl}.
+        This is the entire request. Only this text is sent, and only to{' '}
+        {prepared.resolved.preset.label} when you press Run. The base URL is{' '}
+        {prepared.resolved.baseUrl}.
       </p>
     </Modal>
   );

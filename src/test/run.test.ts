@@ -77,6 +77,87 @@ describe('mocked nudger run', () => {
     const body = JSON.parse(String(init.body));
     expect(body.messages[1].content).toContain('FACT: the thing served 1.2 million requests.');
     expect(body.messages[1].content).toContain('Dear team, I built a thing.');
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('returns the nudge and structured facts in one response', async () => {
+    const store = await freshStore();
+    const doc = await store.createDocument('Cover letter', 'Dear team, I built a thing.');
+    const notes = await store.createFile('notes.md', 'FACT: the thing served 1.2 million requests.');
+    const nudger = await store.createNudger(
+      newNudgerInput({
+        facts: true,
+        factsPrompt: 'Focus on numbers in the notes.',
+        fileIds: [notes.id],
+        prompt: 'Reference notes:\n{{files}}\n\nDraft:\n{{before_cursor}}',
+      }),
+    );
+    const prepared = prepareRun({
+      nudger,
+      document: doc,
+      caret: { start: doc.currentText.length, end: doc.currentText.length },
+      files: [notes],
+      settings: testSettings,
+    });
+    expect(prepared.facts).toBe(true);
+    expect(prepared.system).toContain('FACT CLUES PROTOCOL');
+    expect(prepared.system).toContain('Focus on numbers in the notes.');
+    expect(prepared.fullPrompt).toContain('FACT CLUES PROTOCOL');
+
+    const fetchMock = vi.fn(async (_url: string, init: RequestInit) => {
+      const body = JSON.parse(String(init.body));
+      expect(body.messages[0].content).toContain('FACT CLUES PROTOCOL');
+      expect(body.messages[1].content).toContain('1.2 million requests');
+      return openAiReply(
+        '{"reply":"Which request count should the letter name?","facts":["1.2 million requests (notes.md)"]}',
+      );
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    const { reply } = await runPrepared(store, prepared);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(reply.text).toBe('Which request count should the letter name?');
+    expect(reply.facts).toEqual(['1.2 million requests (notes.md)']);
+    expect(reply.factsError).toBeUndefined();
+    const stored = (await store.listReplies(doc.id))[0];
+    expect(stored.facts).toEqual(['1.2 million requests (notes.md)']);
+  });
+
+  it('keeps a plain-text reply but marks its fact list missing', async () => {
+    const store = await freshStore();
+    const doc = await store.createDocument('Cover letter', 'Dear team.');
+    const nudger = await store.createNudger(newNudgerInput({ facts: true }));
+    const prepared = prepareRun({
+      nudger,
+      document: doc,
+      caret: { start: doc.currentText.length, end: doc.currentText.length },
+      files: [],
+      settings: testSettings,
+    });
+    vi.stubGlobal('fetch', vi.fn(async () => openAiReply('A useful nudge.')));
+    const { reply } = await runPrepared(store, prepared);
+    expect(reply.text).toBe('A useful nudge.');
+    expect(reply.facts).toBeUndefined();
+    expect(reply.factsError).toMatch(/plain reply/i);
+    const stored = (await store.listReplies(doc.id))[0];
+    expect(stored.text).toBe('A useful nudge.');
+    expect(stored.factsError).toMatch(/plain reply/i);
+  });
+
+  it('rejects malformed JSON without saving a broken reply', async () => {
+    const store = await freshStore();
+    const doc = await store.createDocument('Cover letter', 'Dear team.');
+    const nudger = await store.createNudger(newNudgerInput({ facts: true }));
+    const prepared = prepareRun({
+      nudger,
+      document: doc,
+      caret: { start: doc.currentText.length, end: doc.currentText.length },
+      files: [],
+      settings: testSettings,
+    });
+    vi.stubGlobal('fetch', vi.fn(async () => openAiReply('{"reply":"unterminated')));
+    await expect(runPrepared(store, prepared)).rejects.toMatchObject({ kind: 'bad_request' });
+    expect(await store.listReplies(doc.id)).toHaveLength(0);
   });
 
   it('keeps old resolved prompts unchanged when the reference file is edited', async () => {
@@ -162,7 +243,7 @@ describe('mocked nudger run', () => {
         onRetry: (info) => retries.push(info.attempt),
       },
       async (input) => store.addReply(input),
-    );
+      );
     expect(calls).toBe(2);
     expect(retries).toEqual([2]);
     expect(reply.text).toBe('After the wait');
@@ -195,7 +276,7 @@ describe('mocked nudger run', () => {
       { prepared, apiKey: 'k', timeoutMs: 5000, maxRetries: 0 },
       { signal: controller.signal },
       async (input) => store.addReply(input),
-    );
+      );
     setTimeout(() => controller.abort(), 20);
     await expect(running).rejects.toMatchObject({ kind: 'cancelled' });
     expect(await store.listReplies(doc.id)).toHaveLength(0);
