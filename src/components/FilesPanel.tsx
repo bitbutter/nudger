@@ -221,49 +221,39 @@ ${template.prompt}`.toLowerCase().includes(token),
   };
 
   return (
-    <section className="panel-section files-panel" aria-labelledby="files-panel-title">
-      <header className="section-head">
-        <div>
-          <h2 id="files-panel-title">
-            Reference files <span className="count">{files.length}</span>
-          </h2>
-          <p className="section-sub">
-            Files owned by “{nudger.name}”. Only these files can reach this nudger; other nudgers
-            have their own. Stored in this browser, and sent only inside a prompt you preview and
-            run.
-          </p>
-        </div>
-        <div className="section-actions">
-          <button type="button" className="btn btn-sm" onClick={openNew}>
-            New file
-          </button>
-          <button
-            type="button"
-            className="btn btn-sm btn-primary"
-            onClick={() => uploadRef.current?.click()}
-            disabled={uploading}
-          >
-            {uploading ? 'Uploading…' : 'Upload .txt / .md'}
-          </button>
-          <button type="button" className="btn btn-sm" onClick={onClose}>
-            Close
-          </button>
-          <input
-            ref={uploadRef}
-            type="file"
-            accept=".txt,.md,text/plain,text/markdown"
-            multiple
-            hidden
-            onChange={(event) => void handleUpload(event.currentTarget)}
-          />
-        </div>
-      </header>
+    <Modal
+      title={`Reference files · ${nudger.name}`}
+      subtitle="Only this nudger reads these files. The order here is the order {{files}} inserts them in."
+      onClose={onClose}
+      size="xl"
+    >
+      <div className="files-toolbar">
+        <button type="button" className="btn btn-sm" onClick={openNew}>
+          New file
+        </button>
+        <button
+          type="button"
+          className="btn btn-sm btn-primary"
+          onClick={() => uploadRef.current?.click()}
+          disabled={uploading}
+        >
+          {uploading ? 'Uploading…' : 'Upload .txt / .md'}
+        </button>
+        <input
+          ref={uploadRef}
+          type="file"
+          accept=".txt,.md,text/plain,text/markdown"
+          multiple
+          hidden
+          onChange={(event) => void handleUpload(event.currentTarget)}
+        />
+      </div>
 
       {files.length === 0 ? (
         <div className="empty-page">
           <h2>No reference files yet</h2>
           <p>
-            Add notes, a job posting, an outline or a sources list for this document. Only plain text
+            Add notes, a job posting, an outline or a sources list for this nudger. Only plain text
             and Markdown are supported; contents are copied into IndexedDB, not linked to a disk path.
           </p>
           <div className="section-actions">
@@ -331,7 +321,7 @@ ${template.prompt}`.toLowerCase().includes(token),
               </ul>
             )}
             <p className="field-note">
-              {files.length} file{files.length === 1 ? '' : 's'} in this document
+              {files.length} file{files.length === 1 ? '' : 's'} for this nudger
             </p>
           </aside>
 
@@ -454,6 +444,6 @@ ${template.prompt}`.toLowerCase().includes(token),
           onConfirm={() => void deleteFile()}
         />
       ) : null}
-    </section>
+    </Modal>
   );
 }

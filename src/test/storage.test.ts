@@ -57,9 +57,6 @@ describe('nudger storage', () => {
     expect(copy?.documentId).toBe(doc.id);
     expect(copy?.order).toBe(3);
 
-    await store.addBudget(a.id, 3);
-    expect((await store.getNudger(a.id))?.budget).toBe(6);
-
     await store.addReply(testReplyInput(doc.id, a.id));
     await store.deleteNudger(a.id);
     expect(await store.getNudger(a.id)).toBeUndefined();

@@ -1,10 +1,13 @@
-import { createElement } from 'react';
-import { describe, expect, it } from 'vitest';
-import { renderToStaticMarkup } from 'react-dom/server';
+// @vitest-environment jsdom
+import { act, createElement } from 'react';
+import { createRoot, type Root } from 'react-dom/client';
+import { afterEach, describe, expect, it } from 'vitest';
 import { FilesPanel } from '../components/FilesPanel';
 import { ToastProvider } from '../components/Toast';
 import type { ReferenceFile, Template } from '../types';
 import { testNudger } from './helpers';
+
+(globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
 const nudger = testNudger({ id: 'nudger-1', name: 'Coach' });
 
@@ -22,34 +25,50 @@ function file(id: string, name: string): ReferenceFile {
   };
 }
 
+let root: Root | null = null;
+let host: HTMLDivElement | null = null;
+
+afterEach(() => {
+  if (root) act(() => root?.unmount());
+  host?.remove();
+  root = null;
+  host = null;
+  document.body.innerHTML = '';
+});
+
 function render(files: ReferenceFile[]): string {
-  return renderToStaticMarkup(
-    createElement(
-      ToastProvider,
-      null,
-      createElement(FilesPanel, {
-        nudger,
-        files,
-        templates: [] as Template[],
-        onClose: () => {},
-      }),
-    ),
-  );
+  host = document.createElement('div');
+  document.body.appendChild(host);
+  root = createRoot(host);
+  act(() => {
+    root?.render(
+      createElement(
+        ToastProvider,
+        null,
+        createElement(FilesPanel, {
+          nudger,
+          files,
+          templates: [] as Template[],
+          onClose: () => {},
+        }),
+      ),
+    );
+  });
+  return document.body.innerHTML;
 }
 
-describe('reference files panel', () => {
-  it('renders as a section inside the document, not as its own page', () => {
+describe('reference files overlay', () => {
+  it("opens as a dialog listing that nudger's files", () => {
     const html = render([file('f1', 'notes.md'), file('f2', 'sources.txt')]);
 
-    expect(html).not.toContain('<main');
-    expect(html).toContain('panel-section files-panel');
-    expect(html).toContain('Reference files');
-    expect(html).toContain('Coach');
+    expect(html).toContain('role="dialog"');
+    expect(html).toContain('Reference files · Coach');
     expect(html).toContain('notes.md');
     expect(html).toContain('sources.txt');
+    expect(html).toContain('files-toolbar');
   });
 
-  it('offers the empty state when the document has no files', () => {
+  it('offers the empty state when the nudger has no files', () => {
     expect(render([])).toContain('No reference files yet');
   });
 });

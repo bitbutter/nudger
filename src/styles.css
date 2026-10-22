@@ -2203,18 +2203,15 @@ kbd {
 
 /* =================================================================== files */
 
-.files-panel {
-  margin-top: 26px;
-  scroll-margin-top: 16px;
+.files-toolbar {
+  display: flex;
+  gap: 7px;
+  flex-wrap: wrap;
+  margin-bottom: 14px;
 }
 
-.files-panel .section-head {
-  align-items: flex-start;
-  margin-bottom: 16px;
-}
-
-.files-panel .section-sub {
-  max-width: 90ch;
+.files-toolbar .btn {
+  flex: 0 0 auto;
 }
 
 .files-layout {
@@ -2242,16 +2239,6 @@ kbd {
   gap: 2px;
   max-height: 58vh;
   overflow: auto;
-}
-
-.chip-files {
-  cursor: pointer;
-}
-
-.chip-files:hover,
-.chip-files:focus-visible {
-  border-color: var(--border-strong);
-  color: var(--text);
 }
 
 .file-list li {

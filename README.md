@@ -50,11 +50,11 @@ A nudger is an independent virtual replier owned by one document, with:
 - optional provider/model override (the API key always comes from Settings)
 - temperature, max tokens, max context characters
 - auto-run on/off, enabled/disabled, done
-- a reply allowance (budget) for that document, order, timestamps
+- an auto-run allowance for that document, order, timestamps
 - an optional “Facts to check” list and the focus for that list
 - its own reply history
 
-Nudgers in the same document share only the document's reference files and the global API key. They do not share prompts, files, reply state or budgets. There is no cross-nudger dedupe or similarity check. Neither a nudger nor a reference file belongs to any other document, so prompts, files and auto-run stay with the draft they were set up for.
+Nudgers in the same document share only the global API key. They do not share prompts, files, reply state or allowances. There is no cross-nudger dedupe or similarity check. Neither a nudger nor a reference file belongs to any other document, so prompts, files and auto-run stay with the draft they were set up for.
 
 Replies are plain text with preserved line breaks. They are never inserted into the editor. Each saved reply stores the exact resolved prompt that produced it, so editing a file or prompt later does not rewrite history.
 
@@ -80,11 +80,11 @@ The fact protocol adds roughly 300 tokens to the system prompt. Turning it off r
 ### Budget, done, auto-run
 
 - **Done** stops all generation for that nudger until reopened.
-- **Budget** is the reply allowance (default 3) inside this document. The card counts saved replies for that nudger; when the count reaches the budget, running stops until **More +3** adds allowance. Clearing history frees the count. Each document has its own nudgers, so **More +3** raises the allowance only for the nudger you clicked.
-- **Auto-run** fires once after the typing cooldown (about 1.5 s, configurable in Settings) **and** a mouse or pointer movement after the last keystroke — a mouse resting on the page never triggers a run. It only considers the current document's nudgers, and never runs while the document is empty, while the nudger is done/disabled/out of budget, or while a modal is open. If the nudger is busy when it should fire, nudger waits for it to finish and then runs the latest draft once.
+- **Auto-run allowance** (default 3) is how many saved replies a nudger may accumulate in this document before auto-run stops. It is a limit on unattended work only: **Run**, **Run all** and **Preview → Run** always work, so a click is never refused. The count is the nudger's saved replies; clearing history frees it, and the number is edited in the nudger editor (**Edit → Auto-run allowance**). The card shows `auto 2/3` only while auto-run is on.
+- **Auto-run** fires once after the typing cooldown (about 1.5 s, configurable in Settings) **and** a mouse or pointer movement after the last keystroke — a mouse resting on the page never triggers a run. It only considers the current document's nudgers, and never runs while the document is empty, while the nudger is done or disabled, when its allowance is used up, or while a modal is open. If the nudger is busy when it should fire, nudger waits for it to finish and then runs the latest draft once.
 - At most one request per nudger is in flight. A global queue limits concurrent calls (default 2, configurable 1–8). Over-limit jobs wait.
 - Rate-limit (429) and 5xx responses are retried automatically up to two times with backoff when the provider's wait is 15 s or less. Longer waits are surfaced with the provider's message instead of hanging the card.
-- Failed attempts are shown in the card with the provider's message and an actionable hint. They are not saved as replies and do not consume budget.
+- Failed attempts are shown in the card with the provider's message and an actionable hint. They are not saved as replies and do not use up the allowance.
 
 ---
 
@@ -332,9 +332,9 @@ The API key is not part of persisted `Settings`. IndexedDB tables: `documents`, 
 5. **`current_paragraph`** splits on blank lines, picks the next paragraph when the cursor is on a separator, and the previous one on a trailing blank line.
 6. **Trimming an oversized prompt drops the middle**, visibly, keeping the start (instructions/files) and end (text nearest the cursor). It is never silent and the exact result is previewed. Run anyway is always available.
 7. **Manual runs never open the prompt preview automatically** except when the run is blocked or over the limit. The resolved prompt is always available from **Preview** and from each stored reply.
-8. **Each nudger has one budget, inside its own document.** The count is the saved replies for that nudger, **More +3** raises only that nudger's allowance, and clearing its history frees the count. There is no shared allowance between documents because nudgers are not shared.
-9. **Failed runs are not saved as replies.** They appear in the card with the provider message, a Retry button and, where useful, an Open settings link. This keeps reply history meaningful and avoids failures consuming budget.
-10. **Duplicating a document copies its versions and its nudger setup** (prompts, files, budget and generation settings) but not replies, and the copied nudgers start with auto-run off, so opening the duplicate does not immediately double model calls. Duplicating a nudger keeps prompts/files/color/model but resets auto-run, done and budget.
+8. **The reply allowance gates auto-run only.** Each nudger has its own number, inside its own document, and it counts that nudger's saved replies. Manual runs ignore it because a click is deliberate; unattended auto-run stops when the count is reached. The number is a field in the nudger editor rather than a "+3" button on the card.
+9. **Failed runs are not saved as replies.** They appear in the card with the provider message, a Retry button and, where useful, an Open settings link. This keeps reply history meaningful and avoids failures consuming the allowance.
+10. **Duplicating a document copies its versions and its nudger setup** (prompts, files, budget and generation settings) but not replies, and the copied nudgers start with auto-run off, so opening the duplicate does not immediately double model calls. Duplicating a nudger keeps prompts/files/color/model but resets auto-run, done and the allowance.
 11. **Deleting a reference file detaches it from nudgers.** Old replies keep their resolved prompts. Renaming a referenced file warns that `{{file:oldname}}` placeholders need updating.
 12. **Missing or unselected `{{file:name}}` blocks the run.** Unknown placeholders are warnings and are sent literally. A template with selected files but no file placeholder auto-appends them (as required) rather than warning.
 13. **Import replace protects the API key path.** It ignores the exported base URL and custom headers unless the user explicitly opts in; it keeps the local remember-key choice; and it never touches the key itself. Merge preserves local settings and remaps duplicate file names.
@@ -364,7 +364,7 @@ The API key is not part of persisted `Settings`. IndexedDB tables: `documents`, 
 - the draft column width preference (clamping, localStorage round-trip, unusable storage) and the version 4 upgrade that moves a leftover stacked layout beside the editor
 - nudger-owned files: per-nudger listing and ordering, same names on different nudgers, adoption of unassigned files, duplication and deletion cascades, the version 5 upgrade (shared file copied per nudger, replies rewired, unattached files kept as unassigned), and older exports migrated to the same shape
 - nudger → template conversion (placeholders and generation settings kept, files and document left behind) and template reuse in another document
-- IndexedDB storage, CRUD, cascades, budgets, settings key stripping, export/import, merge remapping, import network safety
+- IndexedDB storage, CRUD, cascades, the auto-run allowance, settings key stripping, export/import, merge remapping, import network safety
 - provider request shapes for OpenAI-compatible and Anthropic, URL joining, model override fallback, reserved custom headers, loopback http, response size limits, auth/rate-limit/context/CORS/timeout errors
 - a mocked end-to-end run (create document + file + nudger, resolve prompt, call model, save reply), structured reply/facts parsing, malformed JSON, plain-text fallback, retry and cancel
 - starter library (including which starters enable fact clues), export validation, hash routing, API-key storage

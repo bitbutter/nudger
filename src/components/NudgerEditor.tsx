@@ -487,7 +487,7 @@ export function NudgerEditor({
               />
             </label>
             <label className="field">
-              <span>Reply budget for this document</span>
+              <span>Auto-run allowance</span>
               <input
                 className="input"
                 type="number"
@@ -533,8 +533,8 @@ export function NudgerEditor({
               />
               <span>
                 Auto-run about {(settings.autoRunDelayMs / 1000).toFixed(1)}s after typing stops, once
-                the mouse moves. Never runs while the document is empty, while done, or out of
-                budget.
+                the mouse moves. It pauses when this nudger has saved the allowance above; running
+                by hand always works.
               </span>
             </label>
             <label className="checkbox-row">

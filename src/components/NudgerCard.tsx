@@ -204,7 +204,9 @@ export function NudgerCard({
   const active = replies.filter((reply) => reply.status === 'new' || reply.status === 'pinned');
   const latest = active[0];
   const older = replies.filter((reply) => reply.id !== latest?.id);
-  const blocked = !nudger.enabled || nudger.done || budgetLeft === 0;
+  // The allowance only limits auto-run; a click on Run is always deliberate.
+  const blocked = !nudger.enabled || nudger.done;
+  const autoExhausted = nudger.autoRun && budgetLeft === 0;
   const style = { '--accent': nudger.color } as CSSProperties;
 
   return (
@@ -223,21 +225,14 @@ export function NudgerCard({
           <h3 className="card-name">{nudger.name}</h3>
         </div>
         <div className="card-chips">
-          <button
-            type="button"
-            className="chip chip-files"
-            title="Reference files owned by this nudger"
-            onClick={onOpenFiles}
-          >
-            {fileCount} file{fileCount === 1 ? '' : 's'}
-          </button>
-          <span
-            className={`chip ${budgetLeft === 0 ? 'chip-warn' : ''}`}
-            title="Replies used / allowance for this document"
-          >
-            {used}/{nudger.budget}
-          </span>
-          {nudger.autoRun ? <span className="chip chip-auto">auto</span> : null}
+          {nudger.autoRun ? (
+            <span
+              className={`chip ${budgetLeft === 0 ? 'chip-warn' : ''}`}
+              title="Auto-run allowance: replies saved here / how many auto-run may add before it pauses"
+            >
+              auto {used}/{nudger.budget}
+            </span>
+          ) : null}
           {nudger.facts ? <span className="chip chip-auto">facts</span> : null}
           {nudger.done ? <span className="chip chip-done">done</span> : null}
           {!nudger.enabled ? <span className="chip">off</span> : null}
@@ -258,18 +253,15 @@ export function NudgerCard({
           <span>Done — generation stopped</span>
         ) : !nudger.enabled ? (
           <span>Disabled</span>
-        ) : budgetLeft === 0 ? (
-          <span>Budget used ({used}/{nudger.budget}) — add more to keep going</span>
+        ) : autoExhausted ? (
+          <span>
+            Auto-run paused: allowance used ({used}/{nudger.budget}). Raise it in Edit, or run by hand.
+          </span>
         ) : latest ? (
           <span>Last reply {formatRelative(latest.createdAt)}</span>
         ) : (
           <span>Ready</span>
         )}
-        {budgetLeft === 0 && !nudger.done ? (
-          <button type="button" className="btn btn-sm" onClick={() => onUpdate({ budget: nudger.budget + 3 })}>
-            More +3
-          </button>
-        ) : null}
       </div>
 
       {state?.phase === 'error' && state.error ? (
@@ -341,9 +333,7 @@ export function NudgerCard({
               ? 'This nudger is marked done. Reopen it from the menu.'
               : !nudger.enabled
                 ? 'This nudger is disabled.'
-                : budgetLeft === 0
-                  ? 'Reply budget used. Add more allowance.'
-                  : 'Run this nudger'
+                : 'Run this nudger'
           }
         >
           {busy ? 'Cancel' : 'Run'}
@@ -353,6 +343,14 @@ export function NudgerCard({
         </button>
         <button type="button" className="btn btn-sm" onClick={onEdit}>
           Edit
+        </button>
+        <button
+          type="button"
+          className="btn btn-sm"
+          onClick={onOpenFiles}
+          title="Manage the reference files this nudger can read"
+        >
+          Manage files ({fileCount})
         </button>
         <details className="menu card-menu">
           <summary className="btn btn-sm menu-summary" aria-label={`${nudger.name} menu`}>
@@ -406,12 +404,6 @@ export function NudgerCard({
               }}
             >
               Facts to check: {nudger.facts ? 'on' : 'off'}
-            </button>
-            <button
-              type="button"
-              onClick={(event) => { onUpdate({ budget: nudger.budget + 3 }); closeMenu(event); }}
-            >
-              Add 3 to budget
             </button>
             <button
               type="button"

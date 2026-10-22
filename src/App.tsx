@@ -269,16 +269,7 @@ export default function App() {
       if (manual) notify(`${nudger.name} is already running.`, 'warn');
       return;
     }
-    const used = repliesRef.current.filter((reply) => reply.nudgerId === nudger.id).length;
-    if (used >= nudger.budget) {
-      if (manual) {
-        notify(
-          `${nudger.name} has used its budget (${used}/${nudger.budget}). Use “More +3” on the card to add allowance.`,
-          'warn',
-        );
-      }
-      return;
-    }
+    // The reply allowance only limits auto-run; the caller checks it there.
     const key = apiKeyRef.current;
     if (!key) {
       if (manual) notify('No API key yet. Add one in Settings, then run the nudger.', 'warn');
@@ -337,8 +328,7 @@ export default function App() {
     const blocked: Nudger[] = [];
     let started = 0;
     for (const nudger of eligible) {
-      const used = repliesRef.current.filter((reply) => reply.nudgerId === nudger.id).length;
-      if (used >= nudger.budget || manager.isBusy(nudger.id)) continue;
+      if (manager.isBusy(nudger.id)) continue;
       const prepared = prepareRun({
         nudger,
         document: { id: doc.id, title: doc.title, currentText: textRef.current },
@@ -359,7 +349,7 @@ export default function App() {
         'warn',
       );
     } else if (started === 0) {
-      notify('Nothing was eligible to run (busy, done, or out of budget).', 'info');
+      notify('Nothing was eligible to run (busy or done).', 'info');
     }
   }
 

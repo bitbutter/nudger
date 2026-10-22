@@ -78,13 +78,6 @@ export function DocumentView(props: DocumentViewProps) {
   const onCaretRef = useRef(props.onCaret);
   onCaretRef.current = props.onCaret;
 
-  const filesRef = useRef<HTMLDivElement>(null);
-  useEffect(() => {
-    if (props.openFilesNudgerId) {
-      filesRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-    }
-  }, [props.openFilesNudgerId]);
-
   // The draft column is draggable in the side-by-side layout. Its width is a
   // per-device preference, so it lives in localStorage rather than IndexedDB.
   const layoutRef = useRef<HTMLDivElement>(null);
@@ -442,14 +435,12 @@ export function DocumentView(props: DocumentViewProps) {
       ) : null}
 
       {openNudger ? (
-        <div ref={filesRef}>
-          <FilesPanel
-            nudger={openNudger}
-            files={filesOfOpenNudger}
-            templates={props.templates}
-            onClose={props.onCloseFiles}
-          />
-        </div>
+        <FilesPanel
+          nudger={openNudger}
+          files={filesOfOpenNudger}
+          templates={props.templates}
+          onClose={props.onCloseFiles}
+        />
       ) : null}
     </main>
   );
