@@ -128,14 +128,17 @@ export function Sidebar({
           <section className="sidebar-section">
             <h2 className="sidebar-label">Library</h2>
             <nav className="nav-list">
-              <a
-                className={`nav-item ${activeSection === 'files' ? 'active' : ''}`}
-                href="#/files"
-                onClick={onNavigate}
-              >
-                <span>Reference files</span>
-                <span className="count">{fileCount}</span>
-              </a>
+              {activeDocId ? (
+                <a
+                  className={`nav-item ${activeSection === 'files' ? 'active' : ''}`}
+                  href={`#/doc/${encodeURIComponent(activeDocId)}/files`}
+                  onClick={onNavigate}
+                  title="Reference files for the open document"
+                >
+                  <span>Reference files</span>
+                  <span className="count">{fileCount}</span>
+                </a>
+              ) : null}
               <a
                 className={`nav-item ${activeSection === 'templates' ? 'active' : ''}`}
                 href="#/templates"

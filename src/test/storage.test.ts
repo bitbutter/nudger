@@ -80,8 +80,8 @@ describe('nudger storage', () => {
   it('removes a deleted file from every nudger that attached it', async () => {
     const store = await freshStore();
     const doc = await store.createDocument('Doc', 'Text');
-    const notes = await store.createFile('notes.md', 'facts');
-    const other = await store.createFile('other.txt', 'other');
+    const notes = await store.createFile(doc.id, 'notes.md', 'facts');
+    const other = await store.createFile(doc.id, 'other.txt', 'other');
     const nudger = await store.createNudger(
       newNudgerInput({ documentId: doc.id, fileIds: [notes.id, other.id] }),
     );
@@ -96,9 +96,10 @@ describe('nudger storage', () => {
 describe('reference file storage', () => {
   it('enforces unique names and validates extensions', async () => {
     const store = await freshStore();
-    await store.createFile('notes.md', 'one');
-    await expect(store.createFile('NOTES.md', 'two')).rejects.toThrow(/unique/i);
-    await expect(store.createFile('cv.pdf', 'three')).rejects.toThrow(/txt and \.md/i);
+    const doc = await store.createDocument('Doc', 'Text');
+    await store.createFile(doc.id, 'notes.md', 'one');
+    await expect(store.createFile(doc.id, 'NOTES.md', 'two')).rejects.toThrow(/unique/i);
+    await expect(store.createFile(doc.id, 'cv.pdf', 'three')).rejects.toThrow(/txt and \.md/i);
     await expect(store.updateFile((await store.listFiles())[0].id, { name: 'cv.pdf' })).rejects.toThrow(
       /txt and \.md/i,
     );
@@ -108,6 +109,47 @@ describe('reference file storage', () => {
     });
     expect(renamed.name).toBe('notes-2.md');
     expect(renamed.wordCount).toBe(1);
+  });
+
+  it('keeps each document to its own files', async () => {
+    const store = await freshStore();
+    const first = await store.createDocument('First', 'Text');
+    const second = await store.createDocument('Second', 'Text');
+    const firstNotes = await store.createFile(first.id, 'notes.md', 'first facts');
+    const secondNotes = await store.createFile(second.id, 'notes.md', 'second facts');
+
+    expect(firstNotes.id).not.toBe(secondNotes.id);
+    expect((await store.listFiles(first.id)).map((file) => file.content)).toEqual(['first facts']);
+    expect((await store.listFiles(second.id)).map((file) => file.content)).toEqual(['second facts']);
+    expect(await store.listFiles()).toHaveLength(2);
+
+    await expect(store.createFile(second.id, 'NOTES.MD', 'third')).rejects.toThrow(/unique/i);
+    await expect(store.createFile('missing-document', 'notes.md', 'x')).rejects.toThrow(
+      /choose a document/i,
+    );
+  });
+
+  it('deletes a document with its files and copies them on duplicate', async () => {
+    const store = await freshStore();
+    const doc = await store.createDocument('Source', 'Text');
+    const notes = await store.createFile(doc.id, 'notes.md', 'facts');
+    const nudger = await store.createNudger(
+      newNudgerInput({ documentId: doc.id, fileIds: [notes.id] }),
+    );
+
+    const copy = await store.duplicateDocument(doc.id);
+    expect(copy).not.toBeNull();
+    const copiedFiles = await store.listFiles(copy!.id);
+    expect(copiedFiles).toHaveLength(1);
+    expect(copiedFiles[0].id).not.toBe(notes.id);
+    expect(copiedFiles[0].content).toBe('facts');
+    const copiedNudger = (await store.listNudgers(copy!.id))[0];
+    expect(copiedNudger.fileIds).toEqual([copiedFiles[0].id]);
+    expect((await store.getNudger(nudger.id))?.fileIds).toEqual([notes.id]);
+
+    await store.deleteDocument(doc.id);
+    expect(await store.getFile(notes.id)).toBeUndefined();
+    expect(await store.listFiles(copy!.id)).toHaveLength(1);
   });
 });
 
@@ -177,7 +219,7 @@ describe('export and import', () => {
     const store = await freshStore();
     const doc = await store.createDocument('Doc', 'Hello');
     await store.createVersion(doc.id, 'v1');
-    const file = await store.createFile('notes.md', 'attached fact');
+    const file = await store.createFile(doc.id, 'notes.md', 'attached fact');
     const nudger = await store.createNudger(
       newNudgerInput({
         documentId: doc.id,
@@ -251,11 +293,12 @@ describe('export and import', () => {
   it('remaps an imported file id to an existing file with the same name', async () => {
     const store = await freshStore();
     const doc = await store.createDocument('Imported target', 'Text');
-    const existing = await store.createFile('notes.md', 'local facts');
+    const existing = await store.createFile(doc.id, 'notes.md', 'local facts');
     const bundle = await store.exportAll();
     bundle.files = [
       {
         id: 'imported-file-id',
+        documentId: doc.id,
         name: 'notes.md',
         kind: 'md',
         content: 'imported facts',
@@ -312,6 +355,7 @@ describe('export and import', () => {
     });
     merging.files.push({
       id: 'new-file',
+      documentId: 'new-doc',
       name: 'imported.txt',
       kind: 'txt',
       content: 'imported file',

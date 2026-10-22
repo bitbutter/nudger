@@ -1,11 +1,13 @@
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useMemo, useState } from 'react';
 import type { ProviderId, Settings } from '../types';
 import { getProviderPreset, PROVIDER_PRESETS, resolveProviderConfig, testProviderConnection } from '../lib/providers';
 import { NudgeError } from '../lib/errors';
 import { maskKey } from '../lib/keyStore';
 import { formatBytes } from '../lib/util';
 import { Modal } from './Modal';
+import { SaveStatus } from './SaveStatus';
 import { useToast } from './Toast';
+import { useAutoSave } from '../hooks/useAutoSave';
 
 type StorageInfo = { usage: number; quota: number; percent: number } | null;
 
@@ -97,26 +99,16 @@ export function SettingsPage({
   );
   const [keyInput, setKeyInput] = useState('');
   const [showKey, setShowKey] = useState(false);
-  const [saving, setSaving] = useState(false);
   const [testing, setTesting] = useState(false);
   const [testResult, setTestResult] = useState<{ ok: boolean; text: string } | null>(null);
   const [clearOpen, setClearOpen] = useState(false);
-  const dirtyRef = useRef(false);
-
-  useEffect(() => {
-    if (dirtyRef.current) return;
-    setForm(settings);
-    setHeadersText(settings.customHeaders ? JSON.stringify(settings.customHeaders, null, 2) : '');
-  }, [settings]);
 
   const set = <K extends keyof Settings>(key: K, value: Settings[K]) => {
-    dirtyRef.current = true;
     setForm((current) => ({ ...current, [key]: value }));
   };
 
   const chooseProvider = (id: ProviderId) => {
     const preset = getProviderPreset(id);
-    dirtyRef.current = true;
     setForm((current) => ({
       ...current,
       providerId: id,
@@ -127,11 +119,11 @@ export function SettingsPage({
     setTestResult(null);
   };
 
-  const parseHeaders = (): Record<string, string> | undefined => {
-    if (!headersText.trim()) return undefined;
+  const parseHeaders = (text: string): Record<string, string> | undefined => {
+    if (!text.trim()) return undefined;
     let parsed: unknown;
     try {
-      parsed = JSON.parse(headersText);
+      parsed = JSON.parse(text);
     } catch {
       throw new NudgeError('config', 'Custom headers must be valid JSON.');
     }
@@ -148,29 +140,30 @@ export function SettingsPage({
     return Object.keys(out).length ? out : undefined;
   };
 
-  const save = async () => {
-    setSaving(true);
-    try {
-      const headers = parseHeaders();
-      dirtyRef.current = false;
-      await onSave({ ...form, customHeaders: headers, apiKey: undefined });
-      if (keyInput.trim()) {
-        await onSaveKey(keyInput.trim(), form.rememberKey);
-        setKeyInput('');
-      }
-      notify('Settings saved.', 'success');
-    } catch (error) {
-      notify(error instanceof Error ? error.message : String(error), 'error');
-    } finally {
-      setSaving(false);
-    }
-  };
+  // The form is the source of truth while this page is open; every change is
+  // written to IndexedDB after a short pause, and the header says when that
+  // last happened. There is no Save button to forget.
+  const payload = useMemo(
+    () => ({ form: { ...form, customHeaders: undefined, apiKey: undefined }, headersText }),
+    [form, headersText],
+  );
+  const autoSave = useAutoSave(
+    payload,
+    useCallback(
+      async (next: { form: Settings; headersText: string }) => {
+        const headers = parseHeaders(next.headersText);
+        await onSave({ ...next.form, customHeaders: headers, apiKey: undefined });
+      },
+      // parseHeaders and onSave are stable enough: onSave comes from App state.
+      [onSave],
+    ),
+  );
 
   const test = async () => {
     setTesting(true);
     setTestResult(null);
     try {
-      const headers = parseHeaders();
+      const headers = parseHeaders(headersText);
       const resolved = resolveProviderConfig(form);
       const key = keyInput.trim() || apiKey;
       if (!key) throw new NudgeError('config', 'Enter an API key to test the connection.');
@@ -210,11 +203,9 @@ export function SettingsPage({
           </div>
         </div>
         <div className="page-head-actions">
+          <SaveStatus state={autoSave} />
           <button type="button" className="btn" onClick={test} disabled={testing}>
             {testing ? 'Testing…' : 'Test connection'}
-          </button>
-          <button type="button" className="btn btn-primary" onClick={save} disabled={saving}>
-            {saving ? 'Saving…' : 'Save settings'}
           </button>
         </div>
       </header>
@@ -290,10 +281,7 @@ export function SettingsPage({
                 className="textarea code"
                 rows={3}
                 value={headersText}
-                onChange={(event) => {
-                  dirtyRef.current = true;
-                  setHeadersText(event.target.value);
-                }}
+                onChange={(event) => setHeadersText(event.target.value)}
                 placeholder={'{"X-Client":"nudger"}'}
                 spellCheck={false}
               />
@@ -575,10 +563,10 @@ export function SettingsPage({
           <section className="panel-section">
             <h2>Where things go</h2>
             <p className="field-note">
-              Documents, replies and nudgers are separate per document. Reference files are global
-              to the library, and prompt templates live above documents. A nudger's attached files,
-              budget and reply history stay with its document; use Save as template on a card to
-              carry its setup to another document.
+              Documents, replies, nudgers and reference files are separate per document.
+              Prompt templates live above documents. A nudger's attached files, budget and reply
+              history stay with its document; use Save as template on a card to carry its setup to
+              another document.
             </p>
           </section>
         </aside>

@@ -43,7 +43,7 @@ describe('mocked nudger run', () => {
   it('creates a document, attaches a file, resolves the prompt, calls the model and saves the reply', async () => {
     const store = await freshStore();
     const doc = await store.createDocument('Cover letter', 'Dear team, I built a thing.');
-    const notes = await store.createFile('notes.md', 'FACT: the thing served 1.2 million requests.');
+    const notes = await store.createFile(doc.id, 'notes.md', 'FACT: the thing served 1.2 million requests.');
     const nudger = await store.createNudger(
       newNudgerInput({ documentId: doc.id,
         name: 'Completeness coach',
@@ -83,7 +83,7 @@ describe('mocked nudger run', () => {
   it('returns the nudge and structured facts in one response', async () => {
     const store = await freshStore();
     const doc = await store.createDocument('Cover letter', 'Dear team, I built a thing.');
-    const notes = await store.createFile('notes.md', 'FACT: the thing served 1.2 million requests.');
+    const notes = await store.createFile(doc.id, 'notes.md', 'FACT: the thing served 1.2 million requests.');
     const nudger = await store.createNudger(
       newNudgerInput({ documentId: doc.id,
         facts: true,
@@ -181,7 +181,7 @@ describe('mocked nudger run', () => {
   it('keeps old resolved prompts unchanged when the reference file is edited', async () => {
     const store = await freshStore();
     const doc = await store.createDocument('Essay', 'Draft text.');
-    const notes = await store.createFile('notes.md', 'OLD FACT');
+    const notes = await store.createFile(doc.id, 'notes.md', 'OLD FACT');
     const nudger = await store.createNudger(
       newNudgerInput({ documentId: doc.id, fileIds: [notes.id], prompt: 'Notes:\n{{files}}\n\nDraft:\n{{before_cursor}}' }),
     );

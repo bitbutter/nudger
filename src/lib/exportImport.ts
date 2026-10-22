@@ -15,8 +15,8 @@ import { newId, wordCount } from './util';
 import { GENERIC_FACTS_FOCUS } from './facts';
 
 
-/** 2 adds documentId to nudgers. Version 1 exports are still accepted. */
-export const SCHEMA_VERSION = 2;
+/** 3 adds documentId to reference files. Versions 1 and 2 are still accepted. */
+export const SCHEMA_VERSION = 3;
 
 export type ValidationResult =
   | { ok: true; bundle: ExportedBundle; warnings: string[] }
@@ -52,9 +52,9 @@ export function validateBundle(raw: unknown): ValidationResult {
   if (raw.app !== 'nudger') {
     errors.push('This does not look like a nudger export (missing "app": "nudger").');
   }
-  if (raw.schemaVersion !== 1 && raw.schemaVersion !== SCHEMA_VERSION) {
+  if (raw.schemaVersion !== 1 && raw.schemaVersion !== 2 && raw.schemaVersion !== SCHEMA_VERSION) {
     errors.push(
-      `Unsupported export version: ${String(raw.schemaVersion)}. This build reads version 1 and ${SCHEMA_VERSION} exports.`,
+      `Unsupported export version: ${String(raw.schemaVersion)}. This build reads version 1, 2 and ${SCHEMA_VERSION} exports.`,
     );
   }
   if (errors.length) return { ok: false, errors };
@@ -115,9 +115,33 @@ export function validateBundle(raw: unknown): ValidationResult {
     });
   }
 
+  // Reference files belong to one document. Exports before schema 3 stored one
+  // shared library, so each such file is copied into every document and the
+  // nudger/reply file ids are pointed at the copy for their document, mirroring
+  // the in-place database migration.
   const files: ReferenceFile[] = [];
-  const fileIds = new Set<string>();
-  const fileNames = new Set<string>();
+  const rawFileIds = new Set<string>();
+  const fileById = new Map<string, ReferenceFile>();
+  const legacyFileCopies = new Map<string, Map<string, string>>();
+  const usedFileNames = new Map<string, Set<string>>();
+  const fallbackDocuments = [...documents].sort((a, b) => a.createdAt - b.createdAt);
+
+  const takeFileName = (documentId: string, name: string): boolean => {
+    const key = name.toLowerCase();
+    const used = usedFileNames.get(documentId) ?? new Set<string>();
+    usedFileNames.set(documentId, used);
+    if (used.has(key)) return false;
+    used.add(key);
+    return true;
+  };
+
+  const fileIdForDocument = (rawId: string, documentId: string): string | undefined => {
+    const legacyCopy = legacyFileCopies.get(rawId)?.get(documentId);
+    if (legacyCopy) return legacyCopy;
+    const file = fileById.get(rawId);
+    return file && file.documentId === documentId ? file.id : undefined;
+  };
+
   for (const item of rawFiles) {
     if (!isObject(item) || typeof item.id !== 'string' || typeof item.content !== 'string') {
       warnings.push('Skipped a reference file without an id or text content.');
@@ -128,21 +152,51 @@ export function validateBundle(raw: unknown): ValidationResult {
       warnings.push(`Skipped reference file "${asString(item.name, '(unnamed)')}": ${valid.error}`);
       continue;
     }
-    if (fileIds.has(item.id) || fileNames.has(valid.name.toLowerCase())) {
+    if (rawFileIds.has(item.id)) {
       warnings.push(`Skipped a duplicate reference file (${valid.name}).`);
       continue;
     }
-    fileIds.add(item.id);
-    fileNames.add(valid.name.toLowerCase());
-    files.push({
-      id: item.id,
-      name: valid.name,
-      kind: valid.kind,
-      content: item.content,
-      createdAt: asNumber(item.createdAt, Date.now()),
-      updatedAt: asNumber(item.updatedAt, asNumber(item.createdAt, Date.now())),
-      wordCount: wordCount(item.content),
-    });
+    const rawDocumentId =
+      typeof item.documentId === 'string' && documentIds.has(item.documentId)
+        ? item.documentId
+        : undefined;
+    if (!rawDocumentId && !fallbackDocuments.length) {
+      warnings.push(
+        `Skipped reference file "${valid.name}" because the export has no document to attach it to.`,
+      );
+      continue;
+    }
+    rawFileIds.add(item.id);
+    const createdAt = asNumber(item.createdAt, Date.now());
+    const targetDocumentIds = rawDocumentId ? [rawDocumentId] : fallbackDocuments.map((doc) => doc.id);
+    const copies = new Map<string, string>();
+    for (const documentId of targetDocumentIds) {
+      if (!takeFileName(documentId, valid.name)) {
+        if (rawDocumentId) warnings.push(`Skipped a duplicate reference file (${valid.name}).`);
+        continue;
+      }
+      const id = rawDocumentId ? item.id : newId();
+      const file: ReferenceFile = {
+        id,
+        documentId,
+        name: valid.name,
+        kind: valid.kind,
+        content: item.content,
+        createdAt,
+        updatedAt: asNumber(item.updatedAt, createdAt),
+        wordCount: wordCount(item.content),
+      };
+      copies.set(documentId, id);
+      files.push(file);
+      fileById.set(id, file);
+    }
+    if (!rawDocumentId) {
+      if (!copies.size) continue;
+      legacyFileCopies.set(item.id, copies);
+      warnings.push(
+        `Reference file "${valid.name}" came from an older export without a document, so it was copied into ${copies.size} document${copies.size === 1 ? '' : 's'}.`,
+      );
+    }
   }
 
   const nudgers: Nudger[] = [];
@@ -151,7 +205,6 @@ export function validateBundle(raw: unknown): ValidationResult {
   // into every document and replies are pointed at the copy for their document,
   // mirroring the in-place database migration.
   const legacyCopies = new Map<string, Map<string, string>>();
-  const fallbackDocuments = [...documents].sort((a, b) => a.createdAt - b.createdAt);
   for (const item of rawNudgers) {
     if (!isObject(item) || typeof item.id !== 'string' || typeof item.name !== 'string') {
       warnings.push('Skipped a nudger without an id or name.');
@@ -188,7 +241,9 @@ export function validateBundle(raw: unknown): ValidationResult {
           typeof item.color === 'string' && /^#[0-9a-f]{3,8}$/i.test(item.color) ? item.color : '#7aa2f7',
         system: asString(item.system),
         prompt: asString(item.prompt, 'Draft:\n{{before_cursor}}'),
-        fileIds: asStringArray(item.fileIds).filter((id) => fileIds.has(id)),
+        fileIds: asStringArray(item.fileIds)
+          .map((id) => fileIdForDocument(id, documentId))
+          .filter((id): id is string => id !== undefined),
         // Imported nudgers always use the local provider and never start auto-running.
         // This prevents an imported pack from redirecting the stored key to another
         // preset host or spending silently on the next typing pause. A model tied to
@@ -252,16 +307,19 @@ export function validateBundle(raw: unknown): ValidationResult {
       continue;
     }
     replyIds.add(item.id);
+    const replyDocumentId = item.documentId;
     const status = typeof item.status === 'string' && REPLY_STATUSES.includes(item.status as ReplyStatus)
       ? (item.status as ReplyStatus)
       : 'new';
     replies.push({
       id: item.id,
-      documentId: item.documentId,
+      documentId: replyDocumentId,
       nudgerId,
       text: item.text,
       resolvedPrompt: asString(item.resolvedPrompt),
-      fileIds: asStringArray(item.fileIds),
+      fileIds: asStringArray(item.fileIds)
+        .map((id) => fileIdForDocument(id, replyDocumentId))
+        .filter((id): id is string => id !== undefined),
       model: asString(item.model),
       provider: asString(item.provider),
       createdAt: asNumber(item.createdAt, Date.now()),

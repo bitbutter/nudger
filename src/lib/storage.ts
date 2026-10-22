@@ -37,6 +37,27 @@ export type ImportSummary = {
   settingsRestored: boolean;
 };
 
+/** Reference file names only have to be unique inside their own document. */
+function fileKey(documentId: string, name: string): string {
+  return `${documentId}\u0000${name.toLowerCase()}`;
+}
+
+/** Keeps only the imported file ids that belong to the given document. */
+function remapFileIdsForDocument(
+  fileIds: string[],
+  documentId: string,
+  remap: Map<string, string>,
+  fileDocById: Map<string, string>,
+): string[] {
+  const out: string[] = [];
+  for (const id of fileIds) {
+    const mapped = remap.get(id) ?? id;
+    if (fileDocById.get(mapped) !== documentId) continue;
+    if (!out.includes(mapped)) out.push(mapped);
+  }
+  return out;
+}
+
 export function describeStorageError(error: unknown): string {
   if (error instanceof DOMException) {
     if (error.name === 'QuotaExceededError' || error.code === 22) {
@@ -121,7 +142,7 @@ export function createStore(database: NudgerDB = db) {
   }
 
   async function duplicateDocument(id: string): Promise<Document | null> {
-    return database.transaction('rw', documents, versions, nudgers, async () => {
+    return database.transaction('rw', documents, versions, files, nudgers, async () => {
       const source = await documents.get(id);
       if (!source) return null;
       const now = Date.now();
@@ -142,6 +163,21 @@ export function createStore(database: NudgerDB = db) {
           createdAt: version.createdAt,
         });
       }
+      // Reference files belong to the document, so the copy gets its own files
+      // and its nudgers are pointed at those copies.
+      const fileIdMap = new Map<string, string>();
+      const sourceFiles = await files.where('documentId').equals(id).toArray();
+      for (const file of sourceFiles) {
+        const fileId = newId();
+        fileIdMap.set(file.id, fileId);
+        await files.add({
+          ...file,
+          id: fileId,
+          documentId: copy.id,
+          createdAt: now,
+          updatedAt: now,
+        });
+      }
       // The copy gets the same nudger setup (prompts, files, budget), but no
       // reply history and no auto-run, matching how duplicating a nudger works.
       const sourceNudgers = await nudgers.where('documentId').equals(id).toArray();
@@ -150,6 +186,9 @@ export function createStore(database: NudgerDB = db) {
           ...nudger,
           id: newId(),
           documentId: copy.id,
+          fileIds: nudger.fileIds
+            .map((fileId) => fileIdMap.get(fileId))
+            .filter((fileId): fileId is string => Boolean(fileId)),
           autoRun: false,
           done: false,
           createdAt: now,
@@ -161,9 +200,10 @@ export function createStore(database: NudgerDB = db) {
   }
 
   async function deleteDocument(id: string): Promise<void> {
-    await database.transaction('rw', documents, versions, nudgers, replies, async () => {
+    await database.transaction('rw', documents, versions, files, nudgers, replies, async () => {
       await documents.delete(id);
       await versions.where('documentId').equals(id).delete();
+      await files.where('documentId').equals(id).delete();
       await nudgers.where('documentId').equals(id).delete();
       await replies.where('documentId').equals(id).delete();
     });
@@ -228,8 +268,10 @@ export function createStore(database: NudgerDB = db) {
 
   // ------------------------------------------------------------------- files
 
-  async function listFiles(): Promise<ReferenceFile[]> {
-    const rows = await files.toArray();
+  async function listFiles(documentId?: string): Promise<ReferenceFile[]> {
+    const rows = documentId
+      ? await files.where('documentId').equals(documentId).toArray()
+      : await files.toArray();
     return rows.sort((a, b) => a.name.localeCompare(b.name));
   }
 
@@ -244,14 +286,21 @@ export function createStore(database: NudgerDB = db) {
     }
   }
 
-  async function createFile(name: string, content: string): Promise<ReferenceFile> {
+  async function createFile(
+    documentId: string,
+    name: string,
+    content: string,
+  ): Promise<ReferenceFile> {
+    const doc = await documents.get(documentId);
+    if (!doc) throw new Error('Choose a document before adding a reference file.');
     const valid = validateFileName(name);
     if (!valid.ok) throw new Error(valid.error);
-    const existing = await files.toArray();
+    const existing = await listFiles(documentId);
     assertUniqueName(valid.name, existing);
     const now = Date.now();
     const file: ReferenceFile = {
       id: newId(),
+      documentId,
       name: valid.name,
       kind: valid.kind,
       content,
@@ -275,7 +324,7 @@ export function createStore(database: NudgerDB = db) {
       if (patch.name !== undefined && patch.name !== current.name) {
         const valid = validateFileName(patch.name);
         if (!valid.ok) throw new Error(valid.error);
-        const existing = await files.toArray();
+        const existing = await files.where('documentId').equals(current.documentId).toArray();
         assertUniqueName(valid.name, existing, id);
         name = valid.name;
         kind = valid.kind;
@@ -342,9 +391,17 @@ export function createStore(database: NudgerDB = db) {
   }
 
   async function updateNudger(id: string, patch: Partial<Nudger>): Promise<void> {
-    const { id: _ignoredId, createdAt: _ignoredCreatedAt, ...safe } = patch;
+    // Ownership is fixed at creation: a patch can edit a nudger, never move it
+    // to another document (its files and replies belong to the original one).
+    const {
+      id: _ignoredId,
+      createdAt: _ignoredCreatedAt,
+      documentId: _ignoredDocumentId,
+      ...safe
+    } = patch;
     void _ignoredId;
     void _ignoredCreatedAt;
+    void _ignoredDocumentId;
     if (typeof safe.temperature === 'number') safe.temperature = clamp(safe.temperature, 0, 2);
     if (typeof safe.maxTokens === 'number') {
       safe.maxTokens = Math.round(clamp(safe.maxTokens, 1, 64_000));
@@ -561,16 +618,29 @@ export function createStore(database: NudgerDB = db) {
         const versionIds = new Set(await versions.toCollection().primaryKeys());
         const replyIds = new Set(await replies.toCollection().primaryKeys());
         const templateIds = new Set(await templates.toCollection().primaryKeys());
+        for (const doc of bundle.documents) {
+          if (docIds.has(doc.id)) continue;
+          await documents.add(doc);
+          docIds.add(doc.id);
+          summary.documents += 1;
+        }
+
+        // Files belong to one document, so a name only has to be unique inside
+        // its own document: remap per document, never across the whole library.
         const existing = await files.toArray();
-        const existingNames = new Map(existing.map((file) => [file.name.toLowerCase(), file.id]));
+        const existingNames = new Map(
+          existing.map((file) => [fileKey(file.documentId, file.name), file.id]),
+        );
+        const fileDocById = new Map(existing.map((file) => [file.id, file.documentId]));
         const fileIdRemap = new Map<string, string>();
 
         for (const file of bundle.files) {
+          if (!docIds.has(file.documentId)) continue;
           if (fileIds.has(file.id)) {
             fileIdRemap.set(file.id, file.id);
             continue;
           }
-          const sameNameId = existingNames.get(file.name.toLowerCase());
+          const sameNameId = existingNames.get(fileKey(file.documentId, file.name));
           if (sameNameId) {
             // Reuse the existing file with this name so {{file:name}} keeps working.
             fileIdRemap.set(file.id, sameNameId);
@@ -578,16 +648,10 @@ export function createStore(database: NudgerDB = db) {
           }
           await files.add(file);
           fileIds.add(file.id);
-          existingNames.set(file.name.toLowerCase(), file.id);
+          existingNames.set(fileKey(file.documentId, file.name), file.id);
+          fileDocById.set(file.id, file.documentId);
           fileIdRemap.set(file.id, file.id);
           summary.files += 1;
-        }
-
-        for (const doc of bundle.documents) {
-          if (docIds.has(doc.id)) continue;
-          await documents.add(doc);
-          docIds.add(doc.id);
-          summary.documents += 1;
         }
 
         for (const version of bundle.versions) {
@@ -602,9 +666,12 @@ export function createStore(database: NudgerDB = db) {
           if (!docIds.has(nudger.documentId)) continue;
           await nudgers.add({
             ...nudger,
-            fileIds: nudger.fileIds
-              .map((id) => fileIdRemap.get(id))
-              .filter((id): id is string => id !== undefined && fileIds.has(id)),
+            fileIds: remapFileIdsForDocument(
+              nudger.fileIds,
+              nudger.documentId,
+              fileIdRemap,
+              fileDocById,
+            ),
           });
           nudgerIds.add(nudger.id);
           summary.nudgers += 1;
@@ -613,9 +680,12 @@ export function createStore(database: NudgerDB = db) {
         for (const reply of bundle.replies) {
           if (replyIds.has(reply.id)) continue;
           if (!docIds.has(reply.documentId) || !nudgerIds.has(reply.nudgerId)) continue;
-          const mappedFileIds = reply.fileIds
-            .map((id) => fileIdRemap.get(id))
-            .filter((id): id is string => id !== undefined && fileIds.has(id));
+          const mappedFileIds = remapFileIdsForDocument(
+            reply.fileIds,
+            reply.documentId,
+            fileIdRemap,
+            fileDocById,
+          );
           await replies.add({ ...reply, fileIds: mappedFileIds });
           replyIds.add(reply.id);
           summary.replies += 1;

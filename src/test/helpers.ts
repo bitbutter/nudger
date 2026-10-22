@@ -20,10 +20,11 @@ export async function makeStore() {
   };
 }
 
-export function testFile(name: string, content: string): ReferenceFile {
+export function testFile(name: string, content: string, documentId = 'doc-1'): ReferenceFile {
   const now = Date.now();
   return {
     id: `file-${name}`,
+    documentId,
     name,
     kind: name.endsWith('.md') ? 'md' : 'txt',
     content,

@@ -16,6 +16,8 @@ import { prepareRun } from '../lib/run';
 import { clamp, formatChars } from '../lib/util';
 import { formatFileStats, nudgerFiles } from '../lib/referenceFiles';
 import { GENERIC_FACTS_FOCUS } from '../lib/facts';
+import { useAutoSave } from '../hooks/useAutoSave';
+import { SaveStatus } from './SaveStatus';
 import { useToast } from './Toast';
 
 type NudgerEditorProps = {
@@ -28,6 +30,8 @@ type NudgerEditorProps = {
   caret: Caret;
   onClose: () => void;
   onSave: (nudger: Nudger) => Promise<void>;
+  /** Edit mode only: persist changes as they are made, without closing. */
+  onAutoSave: (nudger: Nudger) => Promise<void>;
   onSaveAsTemplate: (nudger: Nudger) => Promise<void>;
   onDuplicateAsNew: (nudger: Nudger) => Promise<void>;
 };
@@ -42,12 +46,14 @@ export function NudgerEditor({
   caret,
   onClose,
   onSave,
+  onAutoSave,
   onSaveAsTemplate,
   onDuplicateAsNew,
 }: NudgerEditorProps) {
   const { notify } = useToast();
   const [draft, setDraft] = useState<Nudger>(() => ({ ...initial, fileIds: [...initial.fileIds] }));
   const [saving, setSaving] = useState(false);
+  const canAutosave = mode === 'edit' && Boolean(draft.name.trim()) && Boolean(draft.prompt.trim());
   const [templateChoice, setTemplateChoice] = useState(initial.templateId ?? '');
   const [insertChoice, setInsertChoice] = useState('{{files}}');
   const promptRef = useRef<HTMLTextAreaElement>(null);
@@ -144,7 +150,8 @@ export function NudgerEditor({
     });
   };
 
-  const cleaned = (): Nudger | null => {
+  const cleaned = (source: Nudger = draft): Nudger | null => {
+    const draft = source;
     if (!draft.name.trim()) {
       notify('Give this nudger a name.', 'warn');
       return null;
@@ -183,6 +190,23 @@ export function NudgerEditor({
     }
   };
 
+  // Editing an existing nudger needs no Save button: each change is written to
+  // the document's nudger row, and the footer says when that last happened.
+  const autoSave = useAutoSave(
+    draft,
+    async (next) => {
+      const value = cleaned(next);
+      if (!value) throw new Error('A nudger needs a name and a user prompt.');
+      await onAutoSave(value);
+    },
+    { enabled: canAutosave, delay: 800 },
+  );
+
+  const close = () => {
+    void autoSave.flush();
+    onClose();
+  };
+
   const saveTemplate = async () => {
     const value = cleaned();
     if (!value) return;
@@ -201,17 +225,26 @@ export function NudgerEditor({
     <Modal
       title={mode === 'create' ? 'New nudger' : `Edit ${initial.name}`}
       subtitle="Its prompt is resolved against the document and attached files at the moment you run it."
-      onClose={onClose}
+      onClose={close}
       size="xl"
       footer={
-        <>
-          <button type="button" className="btn" onClick={onClose}>
-            Cancel
-          </button>
-          <button type="button" className="btn btn-primary" onClick={save} disabled={saving}>
-            {saving ? 'Saving…' : mode === 'create' ? 'Create nudger' : 'Save nudger'}
-          </button>
-        </>
+        mode === 'create' ? (
+          <>
+            <button type="button" className="btn" onClick={close}>
+              Cancel
+            </button>
+            <button type="button" className="btn btn-primary" onClick={save} disabled={saving}>
+              {saving ? 'Saving…' : 'Create nudger'}
+            </button>
+          </>
+        ) : (
+          <>
+            <SaveStatus state={autoSave} />
+            <button type="button" className="btn btn-primary" onClick={close}>
+              Done
+            </button>
+          </>
+        )
       }
     >
       <div className="editor-split">
@@ -406,11 +439,14 @@ export function NudgerEditor({
             )}
             {files.length === 0 ? (
               <p className="field-note">
-                No reference files exist yet. <a href="#/files">Create one on the Files page.</a>
+                No reference files in this document yet.{' '}
+                <a href={document ? `#/doc/${encodeURIComponent(document.id)}/files` : '#/'}>
+                  Add one on the document's Files page.
+                </a>
               </p>
             ) : (
               <details className="file-checklist">
-                <summary>Select files ({files.length} in library)</summary>
+                <summary>Select files ({files.length} in this document)</summary>
                 <div className="file-checklist-grid">
                   {files.map((file) => (
                     <label key={file.id} className="checkbox-row">

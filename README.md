@@ -1,6 +1,6 @@
 # nudger
 
-**nudger** is a local-first, static writer's board for LLM virtual repliers. Each document carries its own row of named nudgers, so their attached context belongs to that draft; a shared library of `.txt`/`.md` reference files supplies the material. Prompt templates are how a nudger travels to another document.
+**nudger** is a local-first, static writer's board for LLM virtual repliers. Each document carries its own row of named nudgers and its own `.txt`/`.md` reference files, so the material a nudger reads belongs to that draft. Prompt templates are how a nudger travels to another document.
 
 A nudger never writes into your document. It returns plain text. You copy what helps.
 
@@ -33,7 +33,7 @@ First run:
 3. To send reference material, create or upload a `.txt`/`.md` file under **Reference files**, then attach it in the nudger editor. The attachment is part of this document's nudger, not a global setting.
 4. Open **Settings**, choose a provider, paste a key, and use **Test connection**.
 5. Click **Run** on a card, or **Preview** to see the exact resolved prompt first. A blocked or oversized prompt opens the preview instead of sending.
-6. Save named snapshots with **Save version** (Ctrl+S); restore from **Versions**.
+6. Save named snapshots with **Save version** (Ctrl+S); restore from **Versions**. The **Document** menu copies the draft as plain text or downloads it as a `.txt` file.
 7. To reuse a configured nudger in another document, open its menu and choose **Save as template**, then add it from **Prompt templates** in the other document and attach that document's files.
 
 Keyboard shortcuts: Ctrl/Cmd+Alt+N new document, Ctrl/Cmd+S save version, Ctrl/Cmd+Shift+Enter run all, Ctrl/Cmd+Enter run the focused (or first enabled) nudger, Ctrl/Cmd+B toggle the sidebar, Ctrl/Cmd+, open settings.
@@ -54,7 +54,7 @@ A nudger is an independent virtual replier owned by one document, with:
 - an optional “Facts to check” list and the focus for that list
 - its own reply history
 
-Nudgers in the same document share only the global reference-file library and the global API key. They do not share prompts, files, reply state or budgets. There is no cross-nudger dedupe or similarity check. A nudger does not belong to any other document, so its files and auto-run stay with the draft they were set up for.
+Nudgers in the same document share only the document's reference files and the global API key. They do not share prompts, files, reply state or budgets. There is no cross-nudger dedupe or similarity check. Neither a nudger nor a reference file belongs to any other document, so prompts, files and auto-run stay with the draft they were set up for.
 
 Replies are plain text with preserved line breaks. They are never inserted into the editor. Each saved reply stores the exact resolved prompt that produced it, so editing a file or prompt later does not rewrite history.
 
@@ -134,14 +134,14 @@ A missing/unselected file, an unset model/base URL, or a missing API key blocks 
 
 ## Reference files
 
-Global `.txt` and `.md` library, stored in IndexedDB.
+`.txt` and `.md` files that belong to one document, stored in IndexedDB. Open them from a document's **Files** button or the sidebar entry while that document is open.
 
 - Create a blank file, paste text into a new file, or upload one or more `.txt`/`.md` files from disk. Uploads copy the contents; no path link is kept.
 - Only `.txt` and `.md` are accepted. Binary content and other formats (PDF, DOCX, HTML) are rejected. Uploaded files are capped at 2 MB each.
 - Names are unique case-insensitively. Uploads that collide are saved with ` (2)`, ` (3)`, … rather than overwriting.
 - Rename, edit, search, download, delete. Editing is a plain-text textarea; the file's char count, word count, kind and updated time are shown.
-- The file list shows all files, and each document's nudgers can attach any subset in a chosen order. The same file can be attached by nudgers in different documents.
-- Deleting a file removes it from every nudger that attached it. Old replies still hold their resolved prompt. The delete notice names each nudger's document, because names can repeat across documents.
+- The file list shows that document's files, and its nudgers can attach any subset in a chosen order. Names are unique inside the document; another document can have a file with the same name and different contents.
+- Deleting a file removes it from every nudger in that document that attached it. Old replies still hold their resolved prompt.
 
 Files are part of exports. They are never committed to the repository.
 
@@ -151,6 +151,7 @@ Files are part of exports. They are never committed to the repository.
 
 - A document has an id, title, current draft text and timestamps; each has its own versions and reply histories.
 - Draft edits autosave to IndexedDB after ~450 ms. Autosave does **not** create permanent versions.
+- **Document → Copy plain text** puts the draft on the clipboard; **Download .txt** saves it as `<title>.txt`. Both are the text exactly as typed, with no metadata or wrappers.
 - **Save version** creates a permanent snapshot with a timestamp, word count, full text and an optional label (or an automatic "Snapshot N" label).
 - **Versions** shows the list, a preview and the word count. **Restore** is non-destructive:
   1. the current text is saved as a `Before restore of …` version (unless it is identical);
@@ -168,9 +169,9 @@ The starter library is read-only and ships with ten short templates:
 
 Completeness coach (attach notes), Hiring manager (attach the job posting), Skeptical reviewer, Structural editor (attach an outline/style guide if you have one), Fact checker (attach sources if you have one), Devil's advocate, Audience check, Continuation prompter, Research planner, Definition explainer.
 
-A nudger keeps its own copy of the system and user prompts. Editing one nudger never edits another. In the nudger editor you can load a template, reset to the template it came from, save the current prompt as a custom template, or duplicate the nudger as a new one. **Save as template** is also in each card's menu.
+A nudger keeps its own copy of the system and user prompts. Editing one nudger never edits another, and the editor writes changes to that document's nudger row as you make them: the footer shows **Last saved …** and there is no Save button to forget. A new nudger is only stored when you press **Create nudger**. In the nudger editor you can load a template, reset to the template it came from, save the current prompt as a custom template, or duplicate the nudger as a new one. **Save as template** is also in each card's menu.
 
-A saved template copies the name, description, system prompt, user prompt, fact settings and generation settings verbatim, including placeholders such as `{{before_cursor}}`, `{{files}}` and `{{file:notes.md}}`. Files are not carried: they describe one document's context. Add the template in another document, attach that document's files, and the same role works there against the right material. Custom templates live on **Prompt templates**, where they can be created, edited, duplicated, deleted and used as a new nudger. Starter templates cannot be edited or deleted; duplicate one to customize it.
+A saved template copies the name, description, system prompt, user prompt, fact settings and generation settings verbatim, including placeholders such as `{{before_cursor}}`, `{{files}}` and `{{file:notes.md}}`. Files are not carried: they describe one document's context. Add the template in another document, attach that document's files, and the same role works there against the right material. Custom templates live on **Prompt templates**, where they can be created, edited (autosaved, with a **Last saved …** line), duplicated, deleted and used as a new nudger. Starter templates cannot be edited or deleted; duplicate one to customize it.
 
 ---
 
@@ -230,7 +231,8 @@ A nudger can choose its own provider and model. It still uses the one API key in
 - **Shared origin:** `bitbutter.github.io` is one origin for every project page on the account. A different repository page, a collaborator's page or an XSS on any of them can read this app's remembered key and local data. The default (sessionStorage) limits persistence but not same-origin access while the tab is open.
 - Keys are never written to IndexedDB, never included in exports, never logged, and only sent to the selected provider.
 - **Clear key** removes both stores. **Clear all data** lets you remove the key too.
-- Changing the remember setting and clicking Save settings (or Save key) moves the key between stores deliberately. Loading or importing settings never silently moves or deletes a key.
+- Settings have no Save button: every field is written shortly after you change it, and the header shows **Last saved …** or the error that blocked the write. An invalid custom-headers JSON block pauses saving instead of storing a broken value.
+- Changing the remember setting moves the key between stores as soon as that change is saved. Loading or importing settings never silently moves or deletes a key.
 - No browser storage is secure against a compromised page, extension or device. Keep third-party scripts out, use a dedicated key with a spending limit, and rotate it if you suspect exposure.
 
 ---
@@ -250,16 +252,16 @@ There is a visible privacy note in the sidebar and a fuller privacy section in S
 
 ## Export, import and storage
 
-**Export** downloads a JSON bundle (`nudger-export-YYYY-MM-DD-HHMM.json`) with schema version 2: documents, versions, reference files, document-bound nudgers, replies, custom templates and settings. API keys are excluded, and the export is written only after any pending autosave is flushed.
+**Export** downloads a JSON bundle (`nudger-export-YYYY-MM-DD-HHMM.json`) with schema version 3: documents, versions, reference files, document-bound nudgers, replies, custom templates and settings. API keys are excluded, and the export is written only after any pending autosave is flushed.
 
 **Import** validates the file and lets you choose:
 
-- **Merge:** add items whose ids are not already present. Existing documents, files, nudgers and settings are untouched. A file whose name already exists is reused for imported nudgers that reference it, so `{{file:name}}` keeps resolving. Duplicate ids are skipped. Settings are not changed.
-- **Replace:** delete all current app data and settings, then load the export (with the endpoint safeguards below). Reference files in the export replace the library. The API key is never imported or deleted.
+- **Merge:** add items whose ids are not already present. Existing documents, files, nudgers and settings are untouched. A file whose name already exists in the same document is reused for imported nudgers that reference it, so `{{file:name}}` keeps resolving. Duplicate ids are skipped. Settings are not changed.
+- **Replace:** delete all current app data and settings, then load the export (with the endpoint safeguards below). Reference files in the export replace every document's files. The API key is never imported or deleted.
 
 Safety on replace: the exported **base URL and custom headers are ignored by default** (a hostile export must not be able to point your key at another host). Import shows the imported host and offers an explicit checkbox to restore those network settings. The local **remember key** preference is also kept, so an import cannot move your key between storage modes. Imported nudgers always start with **auto-run off** and use your current provider; per-nudger provider overrides are not imported, so a shared nudger pack cannot silently redirect the key to another preset host.
 
-Validation drops malformed items with visible warnings rather than importing partial garbage. Version 1 exports are still accepted: their global nudgers are copied into every document in the export, and replies are pointed at the copy for their document, which is the same migration the browser database performs. Unsupported schema versions are rejected. Import does not validate the semantics of prompts; it does validate types, file extensions and references.
+Validation drops malformed items with visible warnings rather than importing partial garbage. Version 1 and 2 exports are still accepted: their global nudgers and shared reference files are copied into every document in the export, and replies are pointed at the copy for their document, which is the same migration the browser database performs. Unsupported schema versions are rejected. Import does not validate the semantics of prompts; it does validate types, file extensions and references.
 
 **Storage usage** is read from `navigator.storage.estimate()` and shown in the sidebar and Settings. The app warns at 80% and surfaces quota errors instead of silently losing a write. IndexedDB stores the whole document text, so very large documents and many reference files consume real space.
 
@@ -269,7 +271,7 @@ Validation drops malformed items with visible warnings rather than importing par
 
 The expected repository is `nudger` and the site is `https://bitbutter.github.io/nudger/`.
 
-The build uses Vite `base: './'` (relative assets) and hash routing (`#/doc/:id`, `#/files`, `#/templates`, `#/settings`), so it works from a repository subpath with no 404 fallback and no server rewrites. A repository named differently will still work with relative assets; only the public URL changes.
+The build uses Vite `base: './'` (relative assets) and hash routing (`#/doc/:id`, `#/doc/:id/files`, `#/templates`, `#/settings`), so it works from a repository subpath with no 404 fallback and no server rewrites. A repository named differently will still work with relative assets; only the public URL changes.
 
 `.github/workflows/deploy.yml` builds, tests and deploys on pushes to `main` (and manual dispatch) using GitHub's official Pages actions. In the repository, set **Settings → Pages → Build and deployment → Source: GitHub Actions**. The workflow also asks GitHub to enable Pages if needed.
 

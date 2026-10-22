@@ -1,7 +1,7 @@
 import Dexie from 'dexie';
 import { afterEach, describe, expect, it } from 'vitest';
 import { NudgerDB } from '../lib/db';
-import { planNudgerMigration } from '../lib/migrate';
+import { planFileMigration, planNudgerMigration } from '../lib/migrate';
 import { getTemplateById, nudgerFromTemplate, templateFromNudger } from '../lib/starters';
 import { DEFAULT_SETTINGS } from '../lib/defaults';
 import { makeStore, newNudgerInput, testNudger } from './helpers';
@@ -142,6 +142,118 @@ describe('database upgrade to document-bound nudgers', () => {
   });
 });
 
+function legacyFile(name = 'notes.md', content = 'facts') {
+  return {
+    id: `file-${name}`,
+    name,
+    kind: 'md' as const,
+    content,
+    createdAt: 1,
+    updatedAt: 1,
+    wordCount: 1,
+  };
+}
+
+describe('reference file migration planning', () => {
+  it('copies a shared library file into every document and rewires nudgers and replies', () => {
+    const docs = [
+      { id: 'a', title: 'A', createdAt: 1 },
+      { id: 'b', title: 'B', createdAt: 2 },
+    ];
+    const file = legacyFile();
+    const nudgers = [
+      { id: 'na', documentId: 'a', fileIds: [file.id] },
+      { id: 'nb', documentId: 'b', fileIds: [file.id, 'gone'] },
+    ];
+    const replies = [{ id: 'ra', documentId: 'a', fileIds: [file.id] }];
+    const plan = planFileMigration(docs, [file], nudgers, replies);
+
+    expect(plan.files).toHaveLength(2);
+    const copyA = plan.files.find((f) => f.documentId === 'a')!;
+    const copyB = plan.files.find((f) => f.documentId === 'b')!;
+    expect(copyA.id).not.toBe(copyB.id);
+    expect(copyA.name).toBe('notes.md');
+    expect(copyA.content).toBe('facts');
+    expect(plan.nudgerUpdates).toEqual([
+      { id: 'na', fileIds: [copyA.id] },
+      { id: 'nb', fileIds: [copyB.id] },
+    ]);
+    expect(plan.replyUpdates).toEqual([{ id: 'ra', fileIds: [copyA.id] }]);
+  });
+
+  it('leaves document-bound files alone', () => {
+    const docs = [{ id: 'a', title: 'A', createdAt: 1 }];
+    const scoped = { ...legacyFile(), documentId: 'a' };
+    const plan = planFileMigration(docs, [scoped], [{ id: 'na', documentId: 'a', fileIds: [scoped.id] }], []);
+    expect(plan.files.map((f) => f.id)).toEqual([scoped.id]);
+    expect(plan.nudgerUpdates).toHaveLength(0);
+  });
+
+  it('drops a shared library file when there is no document to own it', () => {
+    const plan = planFileMigration([], [legacyFile()], [], []);
+    expect(plan.files).toHaveLength(0);
+    expect(plan.nudgerUpdates).toHaveLength(0);
+  });
+});
+
+describe('database upgrade to document-bound files', () => {
+  it('migrates a version 2 database in place', async () => {
+    const name = `nudger-v2-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+    const legacy = new Dexie(name);
+    legacy.version(2).stores({
+      documents: 'id, title, createdAt, updatedAt',
+      versions: 'id, documentId, createdAt',
+      files: 'id, name, createdAt, updatedAt',
+      nudgers: 'id, documentId, order, createdAt',
+      replies: 'id, documentId, nudgerId, createdAt, [documentId+nudgerId]',
+      templates: 'id, createdAt',
+      settings: 'key',
+    });
+    await legacy.open();
+    const now = Date.now();
+    await legacy.table('documents').bulkAdd([
+      { id: 'a', title: 'A', currentText: 'A text', createdAt: now, updatedAt: now },
+      { id: 'b', title: 'B', currentText: 'B text', createdAt: now + 1, updatedAt: now + 1 },
+    ]);
+    await legacy.table('files').add(legacyFile('shared.md', 'shared facts'));
+    await legacy.table('nudgers').bulkAdd([
+      { ...testNudger({ documentId: 'a' }), id: 'na', fileIds: ['file-shared.md'] },
+      { ...testNudger({ documentId: 'b' }), id: 'nb', fileIds: ['file-shared.md'] },
+    ]);
+    await legacy.table('replies').add({
+      id: 'ra',
+      documentId: 'a',
+      nudgerId: 'na',
+      text: 'nudge a',
+      resolvedPrompt: '',
+      fileIds: ['file-shared.md'],
+      model: 'm',
+      provider: 'deepseek',
+      createdAt: now,
+      status: 'new',
+    });
+    legacy.close();
+
+    const upgraded = new NudgerDB(name);
+    try {
+      await upgraded.open();
+      const files = await upgraded.files.toArray();
+      expect(files).toHaveLength(2);
+      const byDocument = new Map(files.map((file) => [file.documentId, file.id]));
+      expect(byDocument.get('a')).toBeTruthy();
+      expect(byDocument.get('b')).toBeTruthy();
+      expect(byDocument.get('a')).not.toBe(byDocument.get('b'));
+      expect((await upgraded.nudgers.get('na'))?.fileIds).toEqual([byDocument.get('a')]);
+      expect((await upgraded.nudgers.get('nb'))?.fileIds).toEqual([byDocument.get('b')]);
+      expect((await upgraded.replies.get('ra'))?.fileIds).toEqual([byDocument.get('a')]);
+      expect(await upgraded.files.get('file-shared.md')).toBeUndefined();
+    } finally {
+      upgraded.close();
+      await Dexie.delete(name);
+    }
+  });
+});
+
 describe('document-bound nudger storage', () => {
   it('keeps board order and listing per document', async () => {
     const store = await freshStore();
@@ -154,6 +266,17 @@ describe('document-bound nudger storage', () => {
     expect((await store.listNudgers(first.id)).map((n) => n.name)).toEqual(['A']);
     expect((await store.listNudgers(second.id)).map((n) => n.name)).toEqual(['B']);
     expect(await store.listNudgers()).toHaveLength(2);
+  });
+
+  it('never lets an update move a nudger to another document', async () => {
+    const store = await freshStore();
+    const first = await store.createDocument('First', 'Text');
+    const second = await store.createDocument('Second', 'Text');
+    const nudger = await store.createNudger(newNudgerInput({ documentId: first.id, name: 'A' }));
+    await store.updateNudger(nudger.id, { documentId: second.id, prompt: 'Changed' });
+    const after = await store.getNudger(nudger.id);
+    expect(after?.documentId).toBe(first.id);
+    expect(after?.prompt).toBe('Changed');
   });
 
   it('refuses to create a nudger without its document', async () => {

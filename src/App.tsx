@@ -25,7 +25,7 @@ import { RunManager, type RunState } from './lib/runManager';
 import { effectiveCustomHeaders, getProviderPreset } from './lib/providers';
 import { clearApiKey, loadApiKey, saveApiKey } from './lib/keyStore';
 import { blankTemplate, nudgerFromTemplate, templateFromNudger } from './lib/starters';
-import { downloadText } from './lib/util';
+import { downloadText, slugify } from './lib/util';
 import { exportFileName } from './lib/exportImport';
 import { Sidebar } from './components/Sidebar';
 import { DocumentView } from './components/DocumentView';
@@ -73,7 +73,7 @@ export default function App() {
   const templates = useLiveQuery(() => store.listTemplates(), []);
   const settings = useLiveQuery(() => store.getSettings(), []);
   const versionCounts = useLiveQuery(() => store.listVersionCounts(), []);
-  const activeId = route.name === 'doc' ? route.id : null;
+  const activeId = route.name === 'doc' || route.name === 'docFiles' ? route.id : null;
   const activeDoc = documents?.find((doc) => doc.id === activeId) ?? null;
 
   const [caret, setCaret] = useState<Caret>({ start: 0, end: 0 });
@@ -116,12 +116,18 @@ export default function App() {
     () => (nudgers ?? []).filter((nudger) => nudger.documentId === activeId),
     [nudgers, activeId],
   );
+  // Reference files belong to a document too: everything a run can see comes
+  // from the open document only.
+  const scopedFiles = useMemo(
+    () => (files ?? []).filter((file) => file.documentId === activeId),
+    [files, activeId],
+  );
   const nudgersRef = useRef<Nudger[]>([]);
   // Auto-run, Run all, ordering and the board only ever see this document's
-  // nudgers. The unscoped list is kept for the Files page and exports.
+  // nudgers. The unscoped list is kept for the sidebar and exports.
   nudgersRef.current = scopedNudgers;
   const filesRef = useRef<ReferenceFile[]>([]);
-  filesRef.current = files ?? [];
+  filesRef.current = scopedFiles;
   const repliesRef = useRef<Reply[]>([]);
   repliesRef.current = replies ?? [];
   const settingsRef = useRef<Settings | null>(null);
@@ -516,7 +522,7 @@ export default function App() {
     setConfirm({
       title: `Delete “${doc.title}”?`,
       message:
-        'This deletes the document, all of its saved versions and all reply history for this document. Other documents and reference files are not affected. This cannot be undone.',
+        'This deletes the document, its saved versions, its reference files and all reply history for this document. Other documents are not affected. This cannot be undone.',
       confirmLabel: 'Delete document',
       danger: true,
       action: async () => {
@@ -595,6 +601,32 @@ export default function App() {
     setAddOpen(false);
   };
 
+  // Plain text belongs to the writer: the draft leaves the app as raw text, no
+  // metadata, no wrappers, exactly what is in the editor.
+  const copyDocumentText = async () => {
+    const doc = activeDocRef.current;
+    if (!doc) return;
+    const text = textRef.current;
+    try {
+      if (!navigator.clipboard?.writeText) throw new Error('Clipboard is not available here.');
+      await navigator.clipboard.writeText(text);
+      notify(`Copied ${text.length.toLocaleString()} characters to the clipboard.`, 'success');
+    } catch (error) {
+      notify(
+        `Could not copy to the clipboard: ${error instanceof Error ? error.message : String(error)}. Use Download .txt instead.`,
+        'error',
+      );
+    }
+  };
+
+  const downloadDocumentText = async () => {
+    const doc = activeDocRef.current;
+    if (!doc) return;
+    await draft.flush();
+    downloadText(`${slugify(doc.title)}.txt`, textRef.current, 'text/plain');
+    notify(`Downloaded ${slugify(doc.title)}.txt.`, 'success');
+  };
+
   const saveNudger = async (value: Nudger) => {
     try {
       if (editor?.mode === 'create') {
@@ -612,6 +644,12 @@ export default function App() {
     } catch (error) {
       notify(describeStorageError(error), 'error');
     }
+  };
+
+  // Autosave inside the nudger editor: writes the row, keeps the modal open and
+  // stays quiet. Failures surface in the editor's save status.
+  const autoSaveNudger = async (value: Nudger) => {
+    await store.updateNudger(value.id, value);
   };
 
   const saveNudgerAsTemplate = async (value: Nudger) => {
@@ -800,7 +838,13 @@ export default function App() {
   const versionList = versions ?? [];
   const hasKey = Boolean(apiKey);
   const activeSection =
-    route.name === 'doc' ? 'doc' : route.name === 'files' ? 'files' : route.name === 'templates' ? 'templates' : route.name === 'settings' ? 'settings' : 'home';
+    route.name === 'doc' || route.name === 'docFiles'
+      ? 'doc'
+      : route.name === 'templates'
+        ? 'templates'
+        : route.name === 'settings'
+          ? 'settings'
+          : 'home';
   const previewNudger = previewNudgerId
     ? nudgers.find((nudger) => nudger.id === previewNudgerId)
     : undefined;
@@ -812,7 +856,7 @@ export default function App() {
         documents={documents}
         versionCounts={versionCounts}
         activeDocId={activeDoc?.id ?? null}
-        fileCount={files.length}
+        fileCount={scopedFiles.length}
         open={sidebarOpen}
         onClose={() => setSidebarOpen(false)}
         onNavigate={closeOnNarrow}
@@ -829,7 +873,6 @@ export default function App() {
             <Welcome
               onNewDocument={() => void newDocument()}
               onOpenSettings={() => navigate({ name: 'settings' })}
-              onOpenFiles={() => navigate({ name: 'files' })}
               hasKey={hasKey}
             />
           ) : (
@@ -856,11 +899,15 @@ export default function App() {
               onRename={(title) => void renameActive(title)}
               onSaveVersion={() => setSaveVersionOpen(true)}
               onOpenVersions={() => setVersionsOpen(true)}
+              onOpenFiles={() => navigate({ name: 'docFiles', id: activeDoc.id })}
+              fileCount={scopedFiles.length}
               onDuplicate={() => void duplicateActive()}
               onDelete={deleteActive}
+              onCopyText={() => void copyDocumentText()}
+              onDownloadText={() => void downloadDocumentText()}
               onOpenSettings={() => navigate({ name: 'settings' })}
               nudgers={scopedNudgers}
-              files={files}
+              files={scopedFiles}
               replies={replyList}
               templates={templates}
               runStates={runStates}
@@ -892,14 +939,23 @@ export default function App() {
           )
         ) : null}
 
-        {route.name === 'files' ? (
-          <FilesPage
-            files={files}
-            nudgers={nudgers}
-            documents={documents}
-            templates={templates}
-            onToggleSidebar={() => setSidebarOpen((value) => !value)}
-          />
+        {route.name === 'docFiles' ? (
+          activeDoc ? (
+            <FilesPage
+              doc={activeDoc}
+              files={scopedFiles}
+              nudgers={scopedNudgers}
+              templates={templates}
+              onToggleSidebar={() => setSidebarOpen((value) => !value)}
+            />
+          ) : (
+            <div className="boot">
+              <p>This document no longer exists.</p>
+              <button type="button" className="btn" onClick={() => navigate({ name: 'home' })}>
+                Go home
+              </button>
+            </div>
+          )
         ) : null}
 
         {route.name === 'templates' ? (
@@ -938,7 +994,7 @@ export default function App() {
           nudger={previewNudger}
           document={{ id: activeDoc.id, title: activeDoc.title, currentText: draft.text }}
           caret={caret}
-          files={files}
+          files={scopedFiles}
           settings={settings}
           hasKey={hasKey}
           onClose={() => setPreviewNudgerId(null)}
@@ -958,7 +1014,7 @@ export default function App() {
         <NudgerEditor
           mode={editor.mode}
           initial={editor.initial}
-          files={files}
+          files={scopedFiles}
           templates={templates}
           settings={settings}
           document={
@@ -967,6 +1023,7 @@ export default function App() {
           caret={caret}
           onClose={() => setEditor(null)}
           onSave={saveNudger}
+          onAutoSave={autoSaveNudger}
           onSaveAsTemplate={saveNudgerAsTemplate}
           onDuplicateAsNew={duplicateNudgerAsNew}
         />

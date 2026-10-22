@@ -1,11 +1,10 @@
 type WelcomeProps = {
   onNewDocument: () => void;
   onOpenSettings: () => void;
-  onOpenFiles: () => void;
   hasKey: boolean;
 };
 
-export function Welcome({ onNewDocument, onOpenSettings, onOpenFiles, hasKey }: WelcomeProps) {
+export function Welcome({ onNewDocument, onOpenSettings, hasKey }: WelcomeProps) {
   return (
     <main className="welcome">
       <div className="welcome-hero">
@@ -21,9 +20,6 @@ export function Welcome({ onNewDocument, onOpenSettings, onOpenFiles, hasKey }: 
           </button>
           <button type="button" className="btn" onClick={onOpenSettings}>
             {hasKey ? 'Provider settings' : 'Add your API key'}
-          </button>
-          <button type="button" className="btn" onClick={onOpenFiles}>
-            Reference files
           </button>
         </div>
       </div>
@@ -50,8 +46,9 @@ export function Welcome({ onNewDocument, onOpenSettings, onOpenFiles, hasKey }: 
           <span className="step-number">3</span>
           <h2>Attach files</h2>
           <p>
-            Keep notes, a job posting or an outline in the shared library. Attach them to one nudger;
-            other nudgers never see them unless you attach them too.
+            Keep notes, a job posting or an outline with the document. Attach them to one nudger;
+            other nudgers never see them unless you attach them too, and other documents never see
+            them at all.
           </p>
         </article>
         <article>

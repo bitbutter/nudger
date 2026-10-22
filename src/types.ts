@@ -30,6 +30,8 @@ export type Version = {
 
 export type ReferenceFile = {
   id: string;
+  /** The document this file belongs to. Files never travel between documents. */
+  documentId: string;
   name: string;
   kind: 'txt' | 'md';
   content: string;
@@ -131,7 +133,7 @@ export type Settings = {
 
 export type ExportedBundle = {
   app: 'nudger';
-  schemaVersion: 1 | 2;
+  schemaVersion: 1 | 2 | 3;
   exportedAt: number;
   documents: Document[];
   versions: Version[];

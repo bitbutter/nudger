@@ -8,7 +8,9 @@ import { newId } from '../lib/util';
 import { GENERIC_FACTS_FOCUS } from '../lib/facts';
 import { ConfirmDialog, Modal } from './Modal';
 import { FactsFields } from './FactsFields';
+import { SaveStatus } from './SaveStatus';
 import { useToast } from './Toast';
+import { useAutoSave } from '../hooks/useAutoSave';
 
 type TemplatesPageProps = {
   templates: Template[];
@@ -105,16 +107,37 @@ function TemplateEditor({
     }
   };
 
+  // Editing one of my templates needs no Save button: changes are written as
+  // they are made. New templates keep an explicit create so nothing is stored
+  // until the user is done naming it.
+  const autoSave = useAutoSave(
+    draft,
+    async (next) => {
+      await store.saveTemplate({
+        ...next,
+        name: next.name.trim(),
+        description: next.description.trim(),
+        builtin: false,
+      });
+    },
+    { enabled: state.mode === 'edit' && Boolean(draft.name.trim()) && Boolean(draft.prompt.trim()), delay: 800 },
+  );
+
+  const close = () => {
+    void autoSave.flush();
+    onClose();
+  };
+
   return (
     <Modal
       title={state.mode === 'create' ? 'New template' : draft.name}
       subtitle={readOnly ? 'Read-only starter template. Duplicate it to edit.' : 'Templates are a starting point; a nudger keeps its own copy.'}
-      onClose={onClose}
+      onClose={close}
       size="xl"
       footer={
         <>
-          <button type="button" className="btn" onClick={onClose}>
-            Close
+          <button type="button" className="btn" onClick={close}>
+            {state.mode === 'edit' ? 'Done' : 'Close'}
           </button>
           {readOnly ? (
             <>
@@ -125,10 +148,12 @@ function TemplateEditor({
                 Add as nudger
               </button>
             </>
-          ) : (
+          ) : state.mode === 'create' ? (
             <button type="button" className="btn btn-primary" onClick={save} disabled={saving}>
               {saving ? 'Saving…' : 'Save template'}
             </button>
+          ) : (
+            <SaveStatus state={autoSave} />
           )}
         </>
       }

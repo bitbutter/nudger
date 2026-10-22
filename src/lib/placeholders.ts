@@ -49,7 +49,7 @@ export type ResolveContext = {
   nudgerName: string;
   /** Selected files that still exist, in the nudger's order. */
   files: ReferenceFile[];
-  /** Every file name in the library, for distinguishing "not attached" from "missing". */
+  /** Every file name in the document, for distinguishing "not attached" from "missing". */
   allFileNames?: string[];
   now?: Date;
 };
@@ -184,7 +184,7 @@ export function resolveTemplateText(raw: string, ctx: ResolveContext): ResolveTe
               kind: 'missing-file',
               blocking: true,
               name,
-              message: `Reference file "${name}" does not exist. Create it in Files, attach it, or fix the file name in the template.`,
+              message: `Reference file "${name}" does not exist in this document. Create it in this document's Files, attach it, or fix the file name in the template.`,
             },
       );
       return `[[NUDGER: reference file "${name}" is unavailable — the run is blocked]]`;

@@ -1,7 +1,7 @@
 import Dexie, { type Table } from 'dexie';
 import type { Document, Nudger, ReferenceFile, Reply, Template, Version } from '../types';
 import type { StoredSettings } from './defaults';
-import { planNudgerMigration } from './migrate';
+import { planFileMigration, planNudgerMigration } from './migrate';
 
 export type SettingsRow = { key: string; value: StoredSettings };
 
@@ -42,6 +42,29 @@ export class NudgerDB extends Dexie {
           await tx.table('replies').update(update.id, { nudgerId: update.nudgerId });
         }
         if (plan.templates.length) await tx.table('templates').bulkPut(plan.templates);
+      });
+    // Reference files are owned by a document too. Legacy library files are
+    // copied into every existing document and the nudger/reply file ids are
+    // pointed at the copies.
+    this.version(3)
+      .stores({ files: 'id, documentId, name, createdAt, updatedAt' })
+      .upgrade(async (tx) => {
+        const docs = await tx.table('documents').toArray();
+        const fileRows = (await tx.table('files').toArray()) as Array<
+          Omit<ReferenceFile, 'documentId'> & { documentId?: string }
+        >;
+        if (!fileRows.length) return;
+        const nudgerRows = await tx.table('nudgers').toArray();
+        const replyRows = await tx.table('replies').toArray();
+        const plan = planFileMigration(docs, fileRows, nudgerRows, replyRows);
+        await tx.table('files').clear();
+        if (plan.files.length) await tx.table('files').bulkPut(plan.files);
+        for (const update of plan.nudgerUpdates) {
+          await tx.table('nudgers').update(update.id, { fileIds: update.fileIds });
+        }
+        for (const update of plan.replyUpdates) {
+          await tx.table('replies').update(update.id, { fileIds: update.fileIds });
+        }
       });
   }
 }

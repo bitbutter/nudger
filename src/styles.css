@@ -1430,6 +1430,27 @@ html[data-theme='light'] .btn-primary {
   line-height: 1.5;
 }
 
+.save-status {
+  align-self: center;
+  color: var(--faint);
+  font-size: 13.8px;
+  line-height: 1.4;
+  text-align: right;
+}
+
+.save-status.is-busy {
+  color: var(--muted);
+}
+
+.save-status.is-pending {
+  color: var(--warn);
+}
+
+.save-status.is-error {
+  color: var(--danger);
+  max-width: 320px;
+}
+
 .field-row {
   display: flex;
   gap: 12px;

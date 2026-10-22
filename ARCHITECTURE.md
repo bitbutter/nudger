@@ -2,9 +2,9 @@
 
 ## Shape
 
-nudger is a single-page static app: React 18 + TypeScript + Vite, Dexie for IndexedDB. There is no server, no API route, no proxy, and no runtime configuration from the environment. `npm run build` produces a `dist/` directory that can be hosted anywhere static. Hash routing (`#/doc/:id`, `#/files`, `#/templates`, `#/settings`) works from a GitHub Pages subpath without rewrites.
+nudger is a single-page static app: React 18 + TypeScript + Vite, Dexie for IndexedDB. There is no server, no API route, no proxy, and no runtime configuration from the environment. `npm run build` produces a `dist/` directory that can be hosted anywhere static. Hash routing (`#/doc/:id`, `#/doc/:id/files`, `#/templates`, `#/settings`) works from a GitHub Pages subpath without rewrites.
 
-The local database is the source of truth. IndexedDB (`nudger`) holds seven tables: `documents`, `versions`, `files`, `nudgers`, `replies`, `templates`, `settings`. A nudger row carries the `documentId` of the draft it belongs to, so its prompt, files, budget and auto-run never leak into another document; templates are the cross-document artifact. Database version 2 adds that column and migrates version 1 data: each global nudger is copied into every existing document and replies are rewired to the copy for their document (`src/lib/migrate.ts`). With no documents, the configuration is preserved as custom templates instead of being dropped. The API key is deliberately outside the database: `sessionStorage` by default, `localStorage` when the user opts in.
+The local database is the source of truth. IndexedDB (`nudger`) holds seven tables: `documents`, `versions`, `files`, `nudgers`, `replies`, `templates`, `settings`. A nudger row and every reference-file row carry the `documentId` of the draft they belong to, so prompts, files, budget and auto-run never leak into another document; templates are the only cross-document artifact. Database version 2 gives nudgers that column and migrates version 1 data: each global nudger is copied into every existing document and replies are rewired to the copy for their document. Version 3 does the same for the old shared file library: each file is copied into every document, nudger and reply `fileIds` are pointed at the copies, and a legacy file with no document to own it is dropped (`src/lib/migrate.ts`). With no documents, nudger configuration is preserved as custom templates instead of being dropped. The API key is deliberately outside the database: `sessionStorage` by default, `localStorage` when the user opts in.
 
 ## Module map
 
@@ -33,7 +33,7 @@ The local database is the source of truth. IndexedDB (`nudger`) holds seven tabl
 
 1. `App` subscribes to documents, nudgers, files, templates, settings, version counts, and the active document's replies and versions with Dexie live queries. DB writes therefore update the UI without manual refetching.
 2. The active draft text is local React state (`useDraft`). Every change schedules a 450 ms IndexedDB write. Changing documents flushes the previous draft first. A draft is also flushed before Save version, Restore, Duplicate, Export, Delete and Import, so operations never read a stale database copy.
-3. A run snapshots the current in-memory text, the caret (`selectionStart`/`selectionEnd`), the document title, the full file library and the settings, then calls `prepareRun`. Resolution happens at that moment, not when the prompt was saved.
+3. A run snapshots the current in-memory text, the caret (`selectionStart`/`selectionEnd`), the document title, the open document's files and the settings, then calls `prepareRun`. Resolution happens at that moment, not when the prompt was saved.
 4. `prepareRun` resolves the system and user prompts, handles file insertion/auto-append, collects blocking/warning issues, computes characters and estimated tokens, and checks `maxContextChars`. When the nudger's `facts` flag is on, the fixed fact-clue JSON protocol is appended to the resolved system prompt (the focus text comes from `factsPrompt`). It returns a `PreparedRun` containing the exact text, files to send, issues and the provider configuration.
 5. Manual Run and Run all send eligible prepared jobs to `RunManager`. The manager guarantees one in-flight job per nudger and a configurable global concurrency limit; extras queue. It owns abort controllers and emits per-nudger state (queued/running/retrying/error) scoped by `documentId`.
 6. `executeRun` calls the provider adapter, retries 429/5xx with backoff when the wait is short, then parses the response. With facts off the response is the reply. With facts on the response must be `{"reply":"...","facts":[...]}`; `parseStructuredNudge` strips fences/prose, recovers a usable reply if possible, parses and normalizes the fact list (max five, deduped, strings or `{text}` objects), and falls back to plain prose as the reply while recording `factsError`. A JSON-shaped response that cannot be recovered becomes a clear `bad_request` failure with Retry rather than being saved as raw text.
@@ -78,9 +78,9 @@ Autosave is a debounced write of `currentText`. Versions are explicit snapshots.
 
 ## Import/export
 
-Exports are validated with `validateBundle` before import: schema version, required fields, file extensions, unique ids/names, reply statuses, normalized numeric settings. Malformed items are dropped with warnings. The API key is never present in a bundle.
+Exports are validated with `validateBundle` before import: schema version, required fields, file extensions, unique ids, per-document unique names, reply statuses, normalized numeric settings. Malformed items are dropped with warnings. The API key is never present in a bundle.
 
-- Merge adds new ids, skips existing ones, and remaps imported file ids to existing files with the same name so file placeholders keep resolving.
+- Merge adds new ids, skips existing ones, and remaps imported file ids to an existing file with the same name in the same document so file placeholders keep resolving.
 - Replace clears the seven tables and loads the bundle. It restores provider/model/generation preferences but **not** the exported base URL, custom headers or remember-key choice without explicit consent, because those could redirect the stored key. The import dialog shows the imported endpoint and an opt-in.
 
 ## Security and privacy
@@ -92,7 +92,7 @@ Exports are validated with `validateBundle` before import: schema version, requi
 
 ## Testing
 
-Vitest runs in Node with `fake-indexeddb`. Tests cover placeholder semantics, file insertion and auto-append, trimming (including files removed by a trim), version restore, document-bound nudgers and their cascades, the version 1 → 2 database migration, nudger → template conversion and reuse, storage/CRUD/cascades, import/export safety (including version 1 bundles), provider request shapes, reserved headers, loopback http, response size limits and error classification, retry/cancel, hash routing, key storage, the starter library, the fact protocol/parsing (including malformed JSON and plain-text fallback), and a mocked end-to-end run. Browser checks were performed separately with a production preview and a real DeepSeek key; those scripts are not part of the shipped app.
+Vitest runs in Node with `fake-indexeddb`. Tests cover placeholder semantics, file insertion and auto-append, trimming (including files removed by a trim), version restore, document-bound nudgers and files with their cascades, the version 1 → 2 → 3 database migrations, nudger → template conversion and reuse, storage/CRUD/cascades, import/export safety (including version 1 bundles), provider request shapes, reserved headers, loopback http, response size limits and error classification, retry/cancel, hash routing, key storage, the starter library, the fact protocol/parsing (including malformed JSON and plain-text fallback), and a mocked end-to-end run. Browser checks were performed separately with a production preview and a real DeepSeek key; those scripts are not part of the shipped app.
 
 ## Deployment
 

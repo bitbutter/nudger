@@ -7,7 +7,7 @@ function baseBundle(): ExportedBundle {
   const now = Date.now();
   return {
     app: 'nudger',
-    schemaVersion: 2,
+    schemaVersion: 3,
     exportedAt: now,
     documents: [{ id: 'd1', title: 'Doc', currentText: 'Text', createdAt: now, updatedAt: now }],
     versions: [
@@ -16,6 +16,7 @@ function baseBundle(): ExportedBundle {
     files: [
       {
         id: 'f1',
+        documentId: 'd1',
         name: 'notes.md',
         kind: 'md',
         content: 'facts',
@@ -100,7 +101,7 @@ describe('export validation', () => {
 
   it('rejects a file from another app or an unknown version', () => {
     expect(validateBundle({ app: 'other' }).ok).toBe(false);
-    expect(validateBundle({ ...baseBundle(), schemaVersion: 3 }).ok).toBe(false);
+    expect(validateBundle({ ...baseBundle(), schemaVersion: 4 }).ok).toBe(false);
     expect(validateBundle('not json').ok).toBe(false);
   });
 
@@ -155,10 +156,57 @@ describe('export validation', () => {
     expect(result.warnings.some((w) => w.includes('no document to attach'))).toBe(true);
   });
 
+  it('copies a shared library file from a version 2 export into every document', () => {
+    const legacy = baseBundle();
+    legacy.schemaVersion = 2;
+    legacy.documents.push({
+      id: 'd2',
+      title: 'Second',
+      currentText: 'Other text',
+      createdAt: Date.now() + 1,
+      updatedAt: Date.now() + 1,
+    });
+    delete (legacy.files[0] as { documentId?: string }).documentId;
+    legacy.nudgers.push({ ...legacy.nudgers[0], id: 'n2', documentId: 'd2', fileIds: ['f1'] });
+
+    const result = validateBundle(legacy);
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.bundle.files).toHaveLength(2);
+    const byDocument = new Map(result.bundle.files.map((file) => [file.documentId, file.id]));
+    expect([...byDocument.keys()].sort()).toEqual(['d1', 'd2']);
+    expect(byDocument.get('d1')).not.toBe(byDocument.get('d2'));
+    // Each nudger keeps its own document's copy, and a file id may repeat across documents.
+    expect(result.bundle.nudgers.find((n) => n.id === 'n1')?.fileIds).toEqual([
+      byDocument.get('d1'),
+    ]);
+    expect(result.bundle.nudgers.find((n) => n.id === 'n2')?.fileIds).toEqual([
+      byDocument.get('d2'),
+    ]);
+    expect(result.warnings.some((w) => w.includes('older export'))).toBe(true);
+  });
+
+  it('keeps same-named files in different documents apart', () => {
+    const bundle = baseBundle();
+    bundle.documents.push({
+      id: 'd2',
+      title: 'Second',
+      currentText: 'Other text',
+      createdAt: Date.now() + 1,
+      updatedAt: Date.now() + 1,
+    });
+    bundle.files.push({ ...bundle.files[0], id: 'f2', documentId: 'd2' });
+    const result = validateBundle(bundle);
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.bundle.files.map((file) => file.documentId).sort()).toEqual(['d1', 'd2']);
+  });
+
   it('drops invalid files and dangling references with warnings', () => {
     const bundle = baseBundle();
     bundle.files.push({
       id: 'f2',
+      documentId: 'd1',
       name: 'cv.pdf',
       kind: 'txt',
       content: 'nope',

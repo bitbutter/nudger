@@ -20,8 +20,12 @@ type DocumentViewProps = {
   onRename: (title: string) => void;
   onSaveVersion: () => void;
   onOpenVersions: () => void;
+  onOpenFiles: () => void;
+  fileCount: number;
   onDuplicate: () => void;
   onDelete: () => void;
+  onCopyText: () => void;
+  onDownloadText: () => void;
   onOpenSettings: () => void;
   nudgers: Nudger[];
   files: ReferenceFile[];
@@ -150,11 +154,25 @@ export function DocumentView(props: DocumentViewProps) {
           <button type="button" className="btn" onClick={props.onOpenVersions}>
             Versions
           </button>
+          <button
+            type="button"
+            className="btn"
+            onClick={props.onOpenFiles}
+            title="Reference files for this document"
+          >
+            Files ({props.fileCount})
+          </button>
           <details className="menu">
             <summary className="btn menu-summary" aria-label="Document menu">
               Document
             </summary>
             <div className="menu-panel">
+              <button type="button" onClick={props.onCopyText}>
+                Copy plain text
+              </button>
+              <button type="button" onClick={props.onDownloadText}>
+                Download .txt
+              </button>
               <button type="button" onClick={props.onDuplicate}>
                 Duplicate document
               </button>

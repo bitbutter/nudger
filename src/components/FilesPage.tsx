@@ -7,16 +7,16 @@ import { ConfirmDialog, Modal } from './Modal';
 import { useToast } from './Toast';
 
 type FilesPageProps = {
+  doc: Document;
   files: ReferenceFile[];
   nudgers: Nudger[];
-  documents: Document[];
   templates: Template[];
   onToggleSidebar: () => void;
 };
 
 const MAX_FILE_BYTES = 2 * 1024 * 1024;
 
-export function FilesPage({ files, nudgers, documents, templates, onToggleSidebar }: FilesPageProps) {
+export function FilesPage({ doc, files, nudgers, templates, onToggleSidebar }: FilesPageProps) {
   const { notify } = useToast();
   const [query, setQuery] = useState('');
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -148,7 +148,7 @@ ${template.prompt}`.toLowerCase().includes(token),
   const createFile = async () => {
     setNewError(null);
     try {
-      const created = await store.createFile(newName, newContent);
+      const created = await store.createFile(doc.id, newName, newContent);
       setSelectedId(created.id);
       setNewOpen(false);
       notify(`Created ${created.name}.`, 'success');
@@ -162,7 +162,7 @@ ${template.prompt}`.toLowerCase().includes(token),
     input.value = '';
     if (!list.length) return;
     setUploading(true);
-    const existing = (await store.listFiles()).map((file) => file.name);
+    const existing = files.map((file) => file.name);
     const messages: string[] = [];
     let lastId: string | null = null;
     let createdCount = 0;
@@ -190,7 +190,7 @@ ${template.prompt}`.toLowerCase().includes(token),
         }
         const name = uniqueFileName(file.name, existing);
         try {
-          const created = await store.createFile(name, text);
+          const created = await store.createFile(doc.id, name, text);
           existing.push(created.name);
           lastId = created.id;
           createdCount += 1;
@@ -227,12 +227,7 @@ ${template.prompt}`.toLowerCase().includes(token),
   };
 
   const referencedBy = selected
-    ? nudgers
-        .filter((nudger) => nudger.fileIds.includes(selected.id))
-        .map((nudger) => {
-          const doc = documents.find((item) => item.id === nudger.documentId);
-          return doc ? `${nudger.name} (${doc.title})` : nudger.name;
-        })
+    ? nudgers.filter((nudger) => nudger.fileIds.includes(selected.id)).map((nudger) => nudger.name)
     : [];
 
   return (
@@ -245,12 +240,16 @@ ${template.prompt}`.toLowerCase().includes(token),
           <div>
             <h1>Reference files</h1>
             <p className="page-sub">
-              A shared library of .txt and .md files. Nudgers attach only what they need. Files are
-              stored in this browser and sent only inside a prompt you preview and run.
+              Files for “{doc.title}”. Nudgers in this document attach only what they need. Files
+              are stored in this browser, belong to this document only, and are sent only inside a
+              prompt you preview and run.
             </p>
           </div>
         </div>
         <div className="page-head-actions">
+          <a className="btn" href={`#/doc/${encodeURIComponent(doc.id)}`}>
+            Back to draft
+          </a>
           <button type="button" className="btn" onClick={openNew}>
             New file
           </button>
@@ -277,8 +276,8 @@ ${template.prompt}`.toLowerCase().includes(token),
         <div className="empty-page">
           <h2>No reference files yet</h2>
           <p>
-            Add notes, a job posting, an outline or a sources list. Only plain text and Markdown are
-            supported; contents are copied into IndexedDB, not linked to a disk path.
+            Add notes, a job posting, an outline or a sources list for this document. Only plain text
+            and Markdown are supported; contents are copied into IndexedDB, not linked to a disk path.
           </p>
           <div className="page-head-actions">
             <button type="button" className="btn btn-primary" onClick={openNew}>
@@ -325,7 +324,7 @@ ${template.prompt}`.toLowerCase().includes(token),
               </ul>
             )}
             <p className="field-note">
-              {files.length} file{files.length === 1 ? '' : 's'} in the library
+              {files.length} file{files.length === 1 ? '' : 's'} in this document
             </p>
           </aside>
 
