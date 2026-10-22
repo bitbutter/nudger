@@ -460,8 +460,9 @@ export function SettingsPage({
               </label>
             </div>
             <p className="field-note">
-              New nudgers copy the context limit. Auto-run only starts when you stop typing, never on
-              an empty document. Concurrent calls beyond the limit wait in a queue.
+              New nudgers copy the context limit. Auto-run starts only after you stop typing and
+              then move the mouse, never on an empty document. Concurrent calls beyond the limit
+              wait in a queue.
             </p>
           </section>
 
@@ -486,8 +487,8 @@ export function SettingsPage({
                   value={form.layout}
                   onChange={(event) => set('layout', event.target.value === 'side' ? 'side' : 'stacked')}
                 >
+                  <option value="side">Nudgers beside the editor (wide screens, draggable divider)</option>
                   <option value="stacked">Nudgers below the editor</option>
-                  <option value="side">Nudgers beside the editor (wide screens)</option>
                 </select>
               </label>
             </div>

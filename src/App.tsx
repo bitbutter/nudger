@@ -22,6 +22,7 @@ import { useToast } from './components/Toast';
 import { useDraft } from './hooks/useDraft';
 import { executeRun, prepareRun } from './lib/run';
 import { RunManager, type RunState } from './lib/runManager';
+import { createAutoRunTrigger } from './lib/autoRunTrigger';
 import { effectiveCustomHeaders, getProviderPreset } from './lib/providers';
 import { clearApiKey, loadApiKey, saveApiKey } from './lib/keyStore';
 import { blankTemplate, nudgerFromTemplate, templateFromNudger } from './lib/starters';
@@ -430,10 +431,10 @@ export default function App() {
       if (waiting) retry = setTimeout(tick, 1200);
     };
 
-    const timer = setTimeout(tick, cfg.autoRunDelayMs);
+    const timer = createAutoRunTrigger({ delayMs: cfg.autoRunDelayMs, onReady: tick });
     return () => {
       cancelled = true;
-      clearTimeout(timer);
+      timer();
       if (retry) clearTimeout(retry);
     };
   }, [draft.editSeq, manager]);

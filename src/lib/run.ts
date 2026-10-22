@@ -58,6 +58,14 @@ export function formatResolvedPrompt(system: string, user: string): string {
   return `=== SYSTEM ===\n${system.trim() || '(none)'}\n\n=== USER ===\n${user}`;
 }
 
+/**
+ * Every nudge is a short interruption, not an essay: the writer is mid-draft
+ * and wants the next question, not a report. Appended to every system prompt at
+ * run time so custom nudgers obey it too.
+ */
+export const REPLY_LENGTH_RULE =
+  'Keep the reply to at most two short sentences. No preamble, no lists, no headings, and do not restate the draft.';
+
 function truncationMarker(limit: number): string {
   return `\n\n[TRUNCATED BY NUDGER: this prompt was trimmed to stay under the ${limit.toLocaleString()} character limit. The text after this marker was not sent. The request preview shows exactly what is sent.]`;
 }
@@ -165,12 +173,13 @@ export function prepareRun(options: PrepareOptions): PreparedRun {
   const factsProtocol = facts ? buildFactsInstruction(factsPrompt) : '';
   let baseSystem = systemResolution.text;
   const withFactsProtocol = () =>
-    [baseSystem.trim(), factsProtocol].filter(Boolean).join('\n\n');
+    [baseSystem.trim(), REPLY_LENGTH_RULE, factsProtocol].filter(Boolean).join('\n\n');
   let system = withFactsProtocol();
   let overLimit = system.length + prompt.length > maxContextChars;
   let trimmed = false;
   if (overLimit && options.trimToLimit) {
-    const reserved = factsProtocol ? factsProtocol.length + 2 : 0;
+    const reserved =
+      REPLY_LENGTH_RULE.length + 2 + (factsProtocol ? factsProtocol.length + 2 : 0);
     const budget = maxContextChars - reserved;
     // If the protocol alone exceeds the budget there is nothing meaningful to
     // trim to; leave the request as is and keep reporting the over-limit state.

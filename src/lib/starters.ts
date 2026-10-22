@@ -28,7 +28,7 @@ export const STARTER_TEMPLATES: Template[] = [
     description:
       'Compares your draft with the attached notes and asks for missing facts, names, numbers, examples or links. Attach your notes file.',
     system:
-      'You are a completeness coach. Compare the draft with the attached reference notes. Your job is to surface specific information that is missing from the draft, not to write it. Do not rewrite the draft or suggest wording. Reply with up to five missing specifics, each naming the fact, figure, name, date, example or link and asking for it. If the notes add nothing that is missing, say so in one sentence. Use only the reference notes and the draft; never invent facts. Plain text, no headings.',
+      'You are a completeness coach. Name the two most important specifics the attached notes contain but the draft leaves out, as short questions.',
     prompt: 'Reference notes:\n{{files}}\n\nDraft:\n{{before_cursor}}',
     facts: true,
     factsPrompt:
@@ -43,7 +43,7 @@ export const STARTER_TEMPLATES: Template[] = [
     description:
       'Reads your draft as the hiring manager for the attached job posting and asks what they would want to know next. Attach the job posting file.',
     system:
-      "You are the hiring manager for the role described in the attached job posting, reading a candidate's draft application. Ask what you would want to know next. Do not rewrite the application. Name at most three important gaps between the posting and the draft, and ask one concrete question about each. If the draft covers the posting well, ask the single most useful next question. Use only the posting and the draft; do not invent requirements. Plain text.",
+      'You are the hiring manager for the role in the attached posting, reading this application. Ask the two questions that would most change your decision.',
     prompt: 'Job posting:\n{{files}}\n\nApplication draft:\n{{before_cursor}}',
     facts: true,
     factsPrompt:
@@ -58,7 +58,7 @@ export const STARTER_TEMPLATES: Template[] = [
     description:
       'Finds the weakest claim, missing evidence or ambiguity and asks one specific question. No files needed.',
     system:
-      'You are a skeptical but fair reviewer. Identify the weakest claim, the missing evidence or the most consequential ambiguity in the draft. Ask exactly one specific question that would resolve it. Do not rewrite the draft, do not suggest wording, and do not ask more than one question. Plain text, under 60 words.',
+      'You are a skeptical but fair reviewer. Name the weakest claim in the draft and ask the one question that would resolve it.',
     prompt: 'Draft:\n{{before_cursor}}',
     facts: true,
     factsPrompt:
@@ -73,7 +73,7 @@ export const STARTER_TEMPLATES: Template[] = [
     description:
       'Describes the current structure and says what the next paragraph should accomplish. Attach an outline or style guide if you have one.',
     system:
-      'You are a structural editor. Describe the structure of the draft so far in two or three sentences. Then state what the next paragraph or section should accomplish, in terms of its job rather than its wording. Do not write the section, do not suggest sentences, and do not comment on style. If a reference outline or style guide is attached, check the draft against it. Plain text, under 120 words.',
+      'You are a structural editor. Say what the next paragraph has to accomplish, in one sentence.',
     prompt:
       'Reference outline or style guide (optional):\n{{files}}\n\nDraft so far:\n{{before_cursor}}',
     facts: false,
@@ -87,7 +87,7 @@ export const STARTER_TEMPLATES: Template[] = [
     description:
       'Flags claims that need a source and what kind of source would settle each. Attach a sources file if you keep one.',
     system:
-      'You are a fact checker. List the claims in the draft that need a source before publication. For each claim, say what kind of source would settle it, such as a primary document, a dated statistic, a named expert or a dataset. Do not claim to verify anything you cannot verify, do not invent sources, and do not rewrite the draft. If the attached sources file already covers a claim, say so. At most five claims. Plain text.',
+      'You are a fact checker. Name the claims that need a source and the kind of source that would settle each.',
     prompt: 'Known sources (optional):\n{{files}}\n\nDraft:\n{{before_cursor}}',
     facts: false,
     factsPrompt:
@@ -102,7 +102,7 @@ export const STARTER_TEMPLATES: Template[] = [
     description:
       'Makes the strongest opposing case to the draft and states what evidence would change its mind. No files needed.',
     system:
-      "You are a devil's advocate. Make the strongest opposing case to the argument in the draft, in at most three sentences. Then state what evidence would change your mind. Do not attack the writer, do not rewrite the draft, and do not hedge into both-sides mush. If the draft makes no argument yet, say so and name the claim it seems to be building toward. Plain text.",
+      "You are a devil's advocate. Make the strongest opposing case to the draft in one sentence, then name the evidence that would change your mind in the second.",
     prompt: 'Draft:\n{{before_cursor}}',
     facts: false,
     builtin: true,
@@ -115,7 +115,7 @@ export const STARTER_TEMPLATES: Template[] = [
     description:
       'Says whether a smart non-specialist would follow the text, and points to jargon or unclear references. No files needed.',
     system:
-      'You are a smart non-specialist reader. Say in one sentence whether you would follow the draft. Then point to specific jargon, acronyms, unexplained references or assumed knowledge that lost you, quoting the exact phrase. Do not rewrite the draft and do not praise. At most five points. Plain text.',
+      'You are a smart non-specialist reader. Say whether you follow the draft and quote the phrase that lost you.',
     prompt: 'Draft:\n{{before_cursor}}',
     facts: false,
     builtin: true,
@@ -128,7 +128,7 @@ export const STARTER_TEMPLATES: Template[] = [
     description:
       'Asks one question whose answer would decide what you write next. No files needed.',
     system:
-      'You help a writer decide what comes next. Read the draft and ask one question whose answer would determine the next paragraph. Do not write the paragraph, do not offer a menu of options unless the choice is genuinely binary, and do not summarise the draft. Plain text, under 50 words.',
+      'You help a writer decide what comes next. Ask the one question whose answer decides the next paragraph.',
     prompt: 'Draft so far:\n{{before_cursor}}',
     facts: false,
     builtin: true,
@@ -141,7 +141,7 @@ export const STARTER_TEMPLATES: Template[] = [
     description:
       'Lists what still needs research or verification, in priority order. No files needed.',
     system:
-      'You are a research planner. From the draft, list what still needs research or verification, in priority order, with a one-line reason for each. At most six items. Do not do the research, do not invent findings, and do not rewrite the draft. Plain text.',
+      'You are a research planner. Name what still needs research or verification, in the order it blocks the draft.',
     prompt: 'Draft:\n{{before_cursor}}',
     facts: false,
     builtin: true,
@@ -154,7 +154,7 @@ export const STARTER_TEMPLATES: Template[] = [
     description:
       'Finds terms and assumptions a new reader may not share, and says what each one needs. No files needed.',
     system:
-      'You are a careful editor. Identify the terms, acronyms and assumptions in the draft that a new reader might not share. For each, say in one line what the reader would need: a definition, a date, a link or a one-clause explanation. Do not rewrite the draft. At most five items. Plain text.',
+      'You are a careful editor. Name the terms and assumptions a new reader would not share, and what each one needs.',
     prompt: 'Draft:\n{{before_cursor}}',
     facts: false,
     builtin: true,
@@ -176,7 +176,7 @@ export function blankTemplate(): Template {
     id: `template-${now}`,
     name: 'Untitled template',
     description: '',
-    system: 'You are a careful reader. Ask about what is missing or unclear. Do not rewrite the draft.',
+    system: 'You are a careful reader. Ask what is missing or unclear.',
     prompt: 'Draft:\n{{before_cursor}}',
     builtin: false,
     createdAt: now,

@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { executeRun, prepareRun } from '../lib/run';
+import { executeRun, prepareRun, REPLY_LENGTH_RULE } from '../lib/run';
 import { makeStore, newNudgerInput, testSettings } from './helpers';
 import type { PreparedRun } from '../lib/run';
 
@@ -61,6 +61,7 @@ describe('mocked nudger run', () => {
     });
     expect(prepared.blocking).toBe(false);
     expect(prepared.prompt).toContain('1.2 million requests');
+    expect(prepared.system).toContain(REPLY_LENGTH_RULE);
 
     const fetchMock = vi.fn(async () => openAiReply('Which request count should the letter name?'));
     vi.stubGlobal('fetch', fetchMock);

@@ -1,10 +1,19 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
+import type { PointerEvent as ReactPointerEvent } from 'react';
 import type { Caret, Document, Nudger, ReferenceFile, Reply, ReplyStatus, Template } from '../types';
 import type { RunState } from '../lib/runManager';
 import { formatRelative, lineColumn, wordCount } from '../lib/util';
 import { paragraphAt } from '../lib/placeholders';
+import {
+  clampEditorWidth,
+  DEFAULT_EDITOR_WIDTH,
+  MIN_EDITOR_WIDTH,
+  readEditorWidth,
+  saveEditorWidth,
+  SPLITTER_WIDTH,
+} from '../lib/editorWidth';
 import { NudgerBoard } from './NudgerBoard';
-import { FilesPanel } from './FilesPanel';
+import { FilesPanel } from './FilesPanel';;
 
 type DocumentViewProps = {
   doc: Document;
@@ -69,6 +78,63 @@ export function DocumentView(props: DocumentViewProps) {
   useEffect(() => {
     if (props.filesOpen) filesRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
   }, [props.filesOpen]);
+
+  // The draft column is draggable in the side-by-side layout. Its width is a
+  // per-device preference, so it lives in localStorage rather than IndexedDB.
+  const layoutRef = useRef<HTMLDivElement>(null);
+  const [editorWidth, setEditorWidth] = useState(
+    () => clampEditorWidth(readEditorWidth() ?? DEFAULT_EDITOR_WIDTH),
+  );
+  const editorWidthRef = useRef(editorWidth);
+  editorWidthRef.current = editorWidth;
+  const [resizing, setResizing] = useState(false);
+
+  useEffect(() => {
+    const clampToContainer = () => {
+      const container = layoutRef.current;
+      if (!container) return;
+      setEditorWidth((current) => clampEditorWidth(current, container.clientWidth));
+    };
+    clampToContainer();
+    window.addEventListener('resize', clampToContainer);
+    return () => window.removeEventListener('resize', clampToContainer);
+  }, []);
+
+  const commitEditorWidth = (width: number) => {
+    const next = clampEditorWidth(width, layoutRef.current?.clientWidth);
+    setEditorWidth(next);
+    saveEditorWidth(next);
+    return next;
+  };
+
+  const startResize = (event: ReactPointerEvent<HTMLDivElement>) => {
+    if (event.button !== 0) return;
+    event.preventDefault();
+    const startX = event.clientX;
+    const startWidth = editorWidthRef.current;
+    setResizing(true);
+    document.body.classList.add('resizing-columns');
+    const onMove = (moveEvent: PointerEvent) => {
+      const container = layoutRef.current;
+      if (!container) return;
+      setEditorWidth(
+        clampEditorWidth(startWidth + (moveEvent.clientX - startX), container.clientWidth),
+      );
+    };
+    const onUp = () => {
+      window.removeEventListener('pointermove', onMove);
+      window.removeEventListener('pointerup', onUp);
+      document.body.classList.remove('resizing-columns');
+      setResizing(false);
+      saveEditorWidth(editorWidthRef.current);
+    };
+    window.addEventListener('pointermove', onMove);
+    window.addEventListener('pointerup', onUp);
+  };
+
+  const nudgeEditorWidth = (delta: number) => {
+    commitEditorWidth(editorWidthRef.current + delta);
+  };
 
   const reportCaret = () => {
     const area = areaRef.current;
@@ -156,6 +222,22 @@ export function DocumentView(props: DocumentViewProps) {
           </div>
         </div>
         <div className="topbar-actions">
+          <button
+            type="button"
+            className="btn btn-sm"
+            onClick={props.onCopyText}
+            title="Copy the whole draft as plain text"
+          >
+            Copy text
+          </button>
+          <button
+            type="button"
+            className="btn btn-sm"
+            onClick={props.onDownloadText}
+            title="Download the whole draft as a .txt file"
+          >
+            Export .txt
+          </button>
           <button type="button" className="btn" onClick={props.onSaveVersion} title="Save version (Ctrl+S)">
             Save version
           </button>
@@ -176,12 +258,6 @@ export function DocumentView(props: DocumentViewProps) {
               Document
             </summary>
             <div className="menu-panel">
-              <button type="button" onClick={props.onCopyText}>
-                Copy plain text
-              </button>
-              <button type="button" onClick={props.onDownloadText}>
-                Download .txt
-              </button>
               <button type="button" onClick={props.onDuplicate}>
                 Duplicate document
               </button>
@@ -205,7 +281,15 @@ export function DocumentView(props: DocumentViewProps) {
         </div>
       ) : null}
 
-      <div className={`doc-layout layout-${layout}`}>
+      <div
+        ref={layoutRef}
+        className={`doc-layout layout-${layout}`}
+        style={
+          layout === 'side'
+            ? { gridTemplateColumns: `${editorWidth}px ${SPLITTER_WIDTH}px minmax(0, 1fr)` }
+            : undefined
+        }
+      >
         <div className="editor-column">
           <section className="editor-card" aria-label="Draft editor">
             <textarea
@@ -223,7 +307,7 @@ export function DocumentView(props: DocumentViewProps) {
               onKeyUp={reportCaret}
               onSelect={reportCaret}
               spellCheck
-              placeholder="Start writing. Place the cursor where you want the nudgers to read. Nothing is written for you."
+              placeholder="Place the cursor where you want nudgers to read up to."
               aria-describedby="editor-status"
             />
             <footer className="editor-foot" id="editor-status">
@@ -244,6 +328,34 @@ export function DocumentView(props: DocumentViewProps) {
               </div>
             </footer>
           </section>
+        </div>
+
+        <div
+          className={`column-resizer ${resizing ? 'dragging' : ''}`}
+          role="separator"
+          aria-orientation="vertical"
+          aria-label="Resize the draft column"
+          aria-valuenow={Math.round(editorWidth)}
+          aria-valuemin={MIN_EDITOR_WIDTH}
+          tabIndex={0}
+          onPointerDown={startResize}
+          onDoubleClick={() => commitEditorWidth(DEFAULT_EDITOR_WIDTH)}
+          onKeyDown={(event) => {
+            if (event.key === 'ArrowLeft') {
+              event.preventDefault();
+              nudgeEditorWidth(-40);
+            }
+            if (event.key === 'ArrowRight') {
+              event.preventDefault();
+              nudgeEditorWidth(40);
+            }
+            if (event.key === 'Home') {
+              event.preventDefault();
+              commitEditorWidth(DEFAULT_EDITOR_WIDTH);
+            }
+          }}
+        >
+          <span className="column-resizer-grip" aria-hidden="true" />
         </div>
 
         <NudgerBoard

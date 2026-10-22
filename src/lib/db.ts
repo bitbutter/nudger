@@ -66,6 +66,14 @@ export class NudgerDB extends Dexie {
           await tx.table('replies').update(update.id, { fileIds: update.fileIds });
         }
       });
+    // Nudgers moved to the right of the draft. The old stacked layout was the
+    // only default, so a stored 'stacked' is a leftover default rather than a
+    // choice; the split view is now the default and can be dragged.
+    this.version(4).upgrade(async (tx) => {
+      const row = await tx.table('settings').get('app');
+      if (!row?.value || row.value.layout !== 'stacked') return;
+      await tx.table('settings').put({ ...row, value: { ...row.value, layout: 'side' } });
+    });
   }
 }
 

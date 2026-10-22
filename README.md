@@ -33,7 +33,7 @@ First run:
 3. To send reference material, open **Files (n)** in the document toolbar and create or upload a `.txt`/`.md` file in the panel that opens under the draft, then attach it in the nudger editor. The attachment is part of this document's nudger, not a global setting.
 4. Open **Settings**, choose a provider, paste a key, and use **Test connection**.
 5. Click **Run** on a card, or **Preview** to see the exact resolved prompt first. A blocked or oversized prompt opens the preview instead of sending.
-6. Save named snapshots with **Save version** (Ctrl+S); restore from **Versions**. The **Document** menu copies the draft as plain text or downloads it as a `.txt` file.
+6. Save named snapshots with **Save version** (Ctrl+S); restore from **Versions**. **Copy text** and **Export .txt** sit in the document header, next to the title. Drag the divider between the draft and the nudger board to change how wide the text column is; double-click it to reset.
 7. To reuse a configured nudger in another document, open its menu and choose **Save as template**, then add it from **Prompt templates** in the other document and attach that document's files.
 
 Keyboard shortcuts: Ctrl/Cmd+Alt+N new document, Ctrl/Cmd+S save version, Ctrl/Cmd+Shift+Enter run all, Ctrl/Cmd+Enter run the focused (or first enabled) nudger, Ctrl/Cmd+B toggle the sidebar, Ctrl/Cmd+, open settings.
@@ -58,6 +58,8 @@ Nudgers in the same document share only the document's reference files and the g
 
 Replies are plain text with preserved line breaks. They are never inserted into the editor. Each saved reply stores the exact resolved prompt that produced it, so editing a file or prompt later does not rewrite history.
 
+A nudge is a short interruption, not an essay. Every run appends one fixed rule to the system prompt (`REPLY_LENGTH_RULE` in `src/lib/run.ts`): at most two short sentences, no preamble, no lists, no headings, no restating the draft. It applies to custom nudgers too, and the resolved-prompt preview shows it.
+
 Reply statuses: `new`, `pinned`, `dismissed`, `archived`. The newest `new` or `pinned` reply is prominent; all older/dismissed/archived replies are in **History**. Actions: copy, pin/unpin, dismiss/undismiss, archive/unarchive, retry, clear history.
 
 ### Facts to check
@@ -79,7 +81,7 @@ The fact protocol adds roughly 300 tokens to the system prompt. Turning it off r
 
 - **Done** stops all generation for that nudger until reopened.
 - **Budget** is the reply allowance (default 3) inside this document. The card counts saved replies for that nudger; when the count reaches the budget, running stops until **More +3** adds allowance. Clearing history frees the count. Each document has its own nudgers, so **More +3** raises the allowance only for the nudger you clicked.
-- **Auto-run** fires once about 1.5 s after typing stops (configurable in Settings). It only considers the current document's nudgers, and never runs while the document is empty, while the nudger is done/disabled/out of budget, or while a modal is open. If the nudger is busy when the timer fires, nudger waits for it to finish and then runs the latest draft once.
+- **Auto-run** fires once after the typing cooldown (about 1.5 s, configurable in Settings) **and** a mouse or pointer movement after the last keystroke — a mouse resting on the page never triggers a run. It only considers the current document's nudgers, and never runs while the document is empty, while the nudger is done/disabled/out of budget, or while a modal is open. If the nudger is busy when it should fire, nudger waits for it to finish and then runs the latest draft once.
 - At most one request per nudger is in flight. A global queue limits concurrent calls (default 2, configurable 1–8). Over-limit jobs wait.
 - Rate-limit (429) and 5xx responses are retried automatically up to two times with backoff when the provider's wait is 15 s or less. Longer waits are surfaced with the provider's message instead of hanging the card.
 - Failed attempts are shown in the card with the provider's message and an actionable hint. They are not saved as replies and do not consume budget.
@@ -151,7 +153,7 @@ Files are part of exports. They are never committed to the repository.
 
 - A document has an id, title, current draft text and timestamps; each has its own versions and reply histories.
 - Draft edits autosave to IndexedDB after ~450 ms. Autosave does **not** create permanent versions.
-- **Document → Copy plain text** puts the draft on the clipboard; **Download .txt** saves it as `<title>.txt`. Both are the text exactly as typed, with no metadata or wrappers.
+- **Copy text** in the document header puts the draft on the clipboard; **Export .txt** saves it as `<title>.txt`. Both are the text exactly as typed, with no metadata or wrappers.
 - **Save version** creates a permanent snapshot with a timestamp, word count, full text and an optional label (or an automatic "Snapshot N" label).
 - **Versions** shows the list, a preview and the word count. **Restore** is non-destructive:
   1. the current text is saved as a `Before restore of …` version (unless it is identical);
@@ -188,7 +190,7 @@ Settings:
 - optional custom headers as JSON (sent with every provider request; stored in settings and included in exports — do not put a key here)
 - temperature, max tokens, default max context characters
 - auto-run delay, max concurrent runs, request timeout
-- theme, layout (nudgers below or beside the editor)
+- theme, layout (nudgers beside or below the editor; the draft column width is a per-device drag preference in localStorage, not a setting)
 - Test connection
 - remember key on this device, clear key, export/import, clear all data
 
@@ -340,7 +342,7 @@ The API key is not part of persisted `Settings`. IndexedDB tables: `documents`, 
 17. **Reference uploads are capped at 2 MB per file** and validated as text (NUL/control-character check) to protect IndexedDB quota and reject binary files. The cap is a local implementation choice, not a product limit.
 18. **The app uses hash routing.** It requires no server rewrites, works from a subpath, and makes every view reloadable.
 19. **Exports include replies** even though the requirement only listed documents, versions, files, nudgers, templates and settings, because reply history is the audit trail for prompts. Keys remain excluded.
-20. **The theme is dark by default**, with a light theme and a stacked/beside layout preference in Settings.
+20. **The theme is dark by default.** The layout is beside-by-default: the draft on the left with a draggable divider, nudgers to the right in as many columns as fit, left to right. The divider width is stored in localStorage (`nudger.editorWidth`) because it is a per-device display preference, not document data; upgrading from the old stacked default moves stored settings once (database version 4).
 21. **Fact clues are per nudger and selectively on**, not a document-wide panel. The three fact-oriented starters enable them; the rest and custom nudgers start off, and every nudger can toggle them. A document-wide list would be generic, duplicate work, and ignore each nudger's reference files.
 22. **Fact clues share the nudge response** as one JSON object (`reply` + `facts`), not a second extraction request. The prompt protocol is validated locally, tolerates fences/prose, falls back to the plain reply, and refuses malformed JSON rather than showing raw data. This keeps cost and latency at one call while giving structured facts. The tradeoff is that a model can ignore the JSON protocol; the reply is then kept and the missing list is reported.
 23. **Facts are clues, not verified facts.** They are stored per reply, labeled “model-generated; verify”, and never inserted into the draft. A dedicated Fact checker nudger remains the route for a deeper verification pass.
@@ -349,13 +351,15 @@ The API key is not part of persisted `Settings`. IndexedDB tables: `documents`, 
 
 ## Testing
 
-`npm test` runs 140 tests in 14 files:
+`npm test` runs 151 tests in 16 files:
 
 - placeholder resolution (`before_cursor`, `before_last_word`, paragraph, selection, case-insensitivity, unknown placeholders)
 - reference-file insertion, wrappers, auto-append, missing/unselected files, unreferenced warnings, oversized trim, files dropped by trimming
 - non-destructive version restore and autosave behavior
 - document-bound nudgers: per-document listing and order, document duplication/deletion cascades, cross-document reply rejection, version 1 → 2 database migration, legacy export migration
 - the reference-file panel rendering inside the document page (files listed, empty state)
+- the auto-run trigger (cooldown plus pointer movement, resting mouse, single fire, cancel) and the two-sentence rule appended to every system prompt
+- the draft column width preference (clamping, localStorage round-trip, unusable storage) and the version 4 upgrade that moves a leftover stacked layout beside the editor
 - nudger → template conversion (placeholders and generation settings kept, files and document left behind) and template reuse in another document
 - IndexedDB storage, CRUD, cascades, budgets, settings key stripping, export/import, merge remapping, import network safety
 - provider request shapes for OpenAI-compatible and Anthropic, URL joining, model override fallback, reserved custom headers, loopback http, response size limits, auth/rate-limit/context/CORS/timeout errors

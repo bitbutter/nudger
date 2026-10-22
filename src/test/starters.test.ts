@@ -35,6 +35,14 @@ describe('starter library', () => {
     expect(manager?.prompt).toContain('{{files}}');
   });
 
+  it('keeps every starter to two short sentences', () => {
+    for (const template of STARTER_TEMPLATES) {
+      const sentences = template.system.match(/[^.!?]+[.!?]/g) ?? [];
+      expect(sentences.length, template.name).toBeLessThanOrEqual(2);
+      expect(template.system.length, template.name).toBeLessThanOrEqual(220);
+    }
+  });
+
   it('creates an independent nudger from a template', () => {
     const template = getTemplateById('starter-skeptical-reviewer')!;
     const nudger = nudgerFromTemplate(template, { documentId: 'doc-1', order: 2, settings: DEFAULT_SETTINGS });

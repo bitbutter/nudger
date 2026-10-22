@@ -843,18 +843,64 @@ html[data-theme='light'] .btn-primary {
 @media (min-width: 1200px) {
   .doc-layout.layout-side {
     display: grid;
-    grid-template-columns: minmax(0, 1fr) minmax(360px, 430px);
+    /* Columns are set inline from the draggable draft width. */
+    grid-template-columns: minmax(0, 1fr) 24px minmax(0, 1fr);
     align-items: start;
-    gap: 24px;
+    gap: 0;
   }
 
   .doc-layout.layout-side .editor-area {
     min-height: 64vh;
   }
 
-  .doc-layout.layout-side .nudger-grid {
-    grid-template-columns: minmax(0, 1fr);
+  .doc-layout.layout-side .editor-column {
+    padding-right: 12px;
   }
+
+  .doc-layout.layout-side .nudger-board {
+    padding-left: 12px;
+  }
+}
+
+.column-resizer {
+  display: none;
+  position: relative;
+  align-self: stretch;
+  min-height: 220px;
+  cursor: col-resize;
+  touch-action: none;
+  outline: none;
+}
+
+.doc-layout.layout-side .column-resizer {
+  display: block;
+}
+
+.column-resizer-grip {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 50%;
+  width: 3px;
+  transform: translateX(-50%);
+  border-radius: 3px;
+  background: color-mix(in srgb, var(--border-strong) 70%, transparent);
+  transition: background 120ms ease;
+}
+
+.column-resizer:hover .column-resizer-grip,
+.column-resizer:focus-visible .column-resizer-grip,
+.column-resizer.dragging .column-resizer-grip {
+  background: var(--accent);
+}
+
+body.resizing-columns {
+  cursor: col-resize;
+  user-select: none;
+}
+
+body.resizing-columns * {
+  cursor: col-resize !important;
 }
 
 /* ================================================================= nudgers */

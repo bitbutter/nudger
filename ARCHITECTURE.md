@@ -23,11 +23,15 @@ The local database is the source of truth. IndexedDB (`nudger`) holds seven tabl
 | Key storage | `src/lib/keyStore.ts` |
 | Hash routing | `src/lib/hashRoute.ts` |
 | Autosave | `src/hooks/useDraft.ts`, `src/hooks/useAutoSave.ts` |
+| Auto-run trigger | `src/lib/autoRunTrigger.ts` |
+| Draft column width preference | `src/lib/editorWidth.ts` |
 | App shell and orchestration | `src/App.tsx` |
 | UI | `src/components/*.tsx`, `src/styles.css` |
 | Tests | `src/test/*.test.ts` |
 
 `storage.ts` is a store factory (`createStore(database)`) so tests can create an isolated fake-indexeddb database; the app uses a module-level singleton. UI components never talk to Dexie directly except through `useLiveQuery` against store methods.
+
+The document page is a draggable split on wide screens (default layout `side`): the draft column is a fixed pixel width taken from `localStorage` (`nudger.editorWidth`, clamped to at least 320 px and to leave 320 px plus the 24 px handle for nudgers) and the nudger board takes the rest. Dragging, arrow keys on the handle and double-click reset all write that preference; nothing about it touches IndexedDB. Nudgers themselves lay out with `repeat(auto-fill, minmax(300px, 1fr))`, so they fill left to right in as many columns as the board is wide.
 
 Reference files have no page of their own. The document toolbar's **Files (n)** button toggles the panel rendered by `src/components/FilesPanel.tsx` beneath the editor and nudger board of the same document page, and the `#/doc/:id/files` route is just that document page with the panel open, so reload and back/forward keep the right draft on screen.
 
@@ -36,8 +40,8 @@ Reference files have no page of their own. The document toolbar's **Files (n)** 
 1. `App` subscribes to documents, nudgers, files, templates, settings, version counts, and the active document's replies and versions with Dexie live queries. DB writes therefore update the UI without manual refetching.
 2. The active draft text is local React state (`useDraft`). Every change schedules a 450 ms IndexedDB write. Changing documents flushes the previous draft first. A draft is also flushed before Save version, Restore, Duplicate, Export, Delete and Import, so operations never read a stale database copy.
 3. A run snapshots the current in-memory text, the caret (`selectionStart`/`selectionEnd`), the document title, the open document's files and the settings, then calls `prepareRun`. Resolution happens at that moment, not when the prompt was saved.
-4. `prepareRun` resolves the system and user prompts, handles file insertion/auto-append, collects blocking/warning issues, computes characters and estimated tokens, and checks `maxContextChars`. When the nudger's `facts` flag is on, the fixed fact-clue JSON protocol is appended to the resolved system prompt (the focus text comes from `factsPrompt`). It returns a `PreparedRun` containing the exact text, files to send, issues and the provider configuration.
-5. Manual Run and Run all send eligible prepared jobs to `RunManager`. The manager guarantees one in-flight job per nudger and a configurable global concurrency limit; extras queue. It owns abort controllers and emits per-nudger state (queued/running/retrying/error) scoped by `documentId`.
+4. `prepareRun` resolves the system and user prompts, handles file insertion/auto-append, collects blocking/warning issues, computes characters and estimated tokens, and checks `maxContextChars`. The fixed two-short-sentences rule (`REPLY_LENGTH_RULE`) is appended to every system prompt, and when the nudger's `facts` flag is on the fixed fact-clue JSON protocol is appended after it (the focus text comes from `factsPrompt`). Both are fixed costs that trimming reserves. It returns a `PreparedRun` containing the exact text, files to send, issues and the provider configuration.
+5. `createAutoRunTrigger` owns the auto-run timing: it arms a cooldown after each keystroke and fires only once the cooldown has elapsed **and** a `pointermove` has arrived since that keystroke, so a resting mouse never recalculates. Manual Run and Run all bypass it and send eligible prepared jobs to `RunManager`. The manager guarantees one in-flight job per nudger and a configurable global concurrency limit; extras queue. It owns abort controllers and emits per-nudger state (queued/running/retrying/error) scoped by `documentId`.
 6. `executeRun` calls the provider adapter, retries 429/5xx with backoff when the wait is short, then parses the response. With facts off the response is the reply. With facts on the response must be `{"reply":"...","facts":[...]}`; `parseStructuredNudge` strips fences/prose, recovers a usable reply if possible, parses and normalizes the fact list (max five, deduped, strings or `{text}` objects), and falls back to plain prose as the reply while recording `factsError`. A JSON-shaped response that cannot be recovered becomes a clear `bad_request` failure with Retry rather than being saved as raw text.
 7. The parsed reply is stored through `addReply` with the exact `resolvedPrompt`, sent file ids, provider, model, facts and facts error. Editing sources later cannot rewrite that record. `addReply` refuses to create orphans if the document or nudger was deleted while the model was working.
 8. `RunManager` state is filtered to the active document in the UI, so a run in document A cannot show a Cancel button on document B. Deleting a document cancels its jobs; deleting a nudger cancels its job.
@@ -54,6 +58,12 @@ Reference files have no page of their own. The document toolbar's **Files (n)** 
 `prepareRun` resolves system and user messages separately, gathers used files across both, and applies the auto-append rule only to the user message. If neither message contains a file placeholder, all attached files are appended under `REFERENCE FILES`; if either does, only the placeholders insert content and every attached file that was not used is reported. Every file is wrapped as reference data with begin/end markers.
 
 Trimming is explicit: `trimPromptMiddle` keeps the start and end of an oversized user prompt, drops the middle with a visible marker, and the preview is recomputed so the user sees exactly what will be sent.
+
+### Reply length and auto-run timing
+
+Every nudge is capped by `REPLY_LENGTH_RULE`: at most two short sentences, no preamble, no lists, no headings, no restating the draft. It is appended to the resolved system prompt at run time rather than stored per nudger, so custom templates and older nudgers obey it without migration, and the rule is visible in the preview. The starter library's own system prompts are written to fit inside it too.
+
+Auto-run is deliberately two-conditioned. `createAutoRunTrigger` starts a cooldown on every keystroke and listens for `pointermove`; the run fires only when the cooldown has passed **and** the pointer moved after that keystroke. Typing and then reading without touching the mouse therefore produces no recalculation; moving the mouse after the pause does.
 
 ### Fact clues
 

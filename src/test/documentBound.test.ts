@@ -254,6 +254,38 @@ describe('database upgrade to document-bound files', () => {
   });
 });
 
+describe('database upgrade to the split layout', () => {
+  it('moves a leftover stacked default beside the editor and keeps other preferences', async () => {
+    const name = `nudger-v3-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+    const legacy = new Dexie(name);
+    legacy.version(3).stores({
+      documents: 'id, title, createdAt, updatedAt',
+      versions: 'id, documentId, createdAt',
+      files: 'id, documentId, name, createdAt, updatedAt',
+      nudgers: 'id, documentId, order, createdAt',
+      replies: 'id, documentId, nudgerId, createdAt, [documentId+nudgerId]',
+      templates: 'id, createdAt',
+      settings: 'key',
+    });
+    await legacy.open();
+    await legacy.table('settings').bulkAdd([
+      { key: 'stacked', value: { theme: 'light', layout: 'stacked' } },
+      { key: 'app', value: { theme: 'dark', layout: 'stacked' } },
+    ]);
+    legacy.close();
+
+    const upgraded = new NudgerDB(name);
+    try {
+      await upgraded.open();
+      expect((await upgraded.settings.get('app'))?.value.layout).toBe('side');
+      expect((await upgraded.settings.get('stacked'))?.value.layout).toBe('stacked');
+    } finally {
+      upgraded.close();
+      await Dexie.delete(name);
+    }
+  });
+});
+
 describe('document-bound nudger storage', () => {
   it('keeps board order and listing per document', async () => {
     const store = await freshStore();

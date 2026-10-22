@@ -570,8 +570,9 @@ export function NudgerEditor({
                 onChange={(event) => patch({ autoRun: event.target.checked })}
               />
               <span>
-                Auto-run about {(settings.autoRunDelayMs / 1000).toFixed(1)}s after typing stops.
-                Never runs while the document is empty, while done, or out of budget.
+                Auto-run about {(settings.autoRunDelayMs / 1000).toFixed(1)}s after typing stops, once
+                the mouse moves. Never runs while the document is empty, while done, or out of
+                budget.
               </span>
             </label>
             <label className="checkbox-row">

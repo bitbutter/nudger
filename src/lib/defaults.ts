@@ -14,7 +14,7 @@ export const DEFAULT_SETTINGS: Settings = {
   maxConcurrentRuns: 2,
   requestTimeoutMs: 60_000,
   theme: 'dark',
-  layout: 'stacked',
+  layout: 'side',
 };
 
 function isProviderId(value: unknown): value is ProviderId {
@@ -31,7 +31,8 @@ export function normalizeSettings(raw: Partial<Settings> | null | undefined): Se
   const providerId = isProviderId(source.providerId) ? source.providerId : DEFAULT_SETTINGS.providerId;
   const preset = getProviderPreset(providerId);
   const theme: Theme = source.theme === 'light' ? 'light' : 'dark';
-  const layout: Layout = source.layout === 'side' ? 'side' : 'stacked';
+  const layout: Layout =
+    source.layout === 'stacked' || source.layout === 'side' ? source.layout : DEFAULT_SETTINGS.layout;
   const customHeaders =
     source.customHeaders && typeof source.customHeaders === 'object' && !Array.isArray(source.customHeaders)
       ? Object.fromEntries(
