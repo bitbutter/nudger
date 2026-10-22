@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import type { Document } from '../types';
 import { formatBytes, formatRelative } from '../lib/util';
 
@@ -34,6 +34,11 @@ export function Sidebar({
   activeSection,
 }: SidebarProps) {
   const [query, setQuery] = useState('');
+  const asideRef = useRef<HTMLElement>(null);
+
+  useEffect(() => {
+    if (asideRef.current) asideRef.current.inert = !open;
+  }, [open]);
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -48,7 +53,12 @@ export function Sidebar({
   return (
     <>
       <div className={`sidebar-scrim ${open ? 'visible' : ''}`} onClick={onClose} aria-hidden="true" />
-      <aside className={`sidebar ${open ? 'open' : 'collapsed'}`} aria-label="Documents and settings">
+      <aside
+        ref={asideRef}
+        className={`sidebar ${open ? 'open' : 'collapsed'}`}
+        aria-label="Documents and settings"
+        aria-hidden={!open}
+      >
         <div className="sidebar-head">
           <a className="brand" href="#/" onClick={onNavigate} aria-label="nudger home">
             <span className="brand-mark" aria-hidden="true">
@@ -181,8 +191,9 @@ export function Sidebar({
 
         <div className="sidebar-foot">
           <p className="privacy-note">
-            <strong>Local-first.</strong> Drafts, files and keys stay in this browser. Only the prompt
-            you preview is sent, and only to your provider when you run a nudger.
+            <strong>Local-first.</strong> Drafts, files and keys stay in this browser. Only the
+            resolved prompt is sent, and only to your provider. Auto-run sends it without opening the
+            preview; every saved reply keeps the exact prompt.
           </p>
         </div>
       </aside>

@@ -361,14 +361,16 @@ export function SettingsPage({
             </label>
             {form.rememberKey ? (
               <p className="issue issue-warn">
-                The key is kept in localStorage. Any script running on this page could read it.
-                nudger ships no third-party scripts, but a modified copy of the app could. Leave this
-                off if that risk matters.
+                After you save settings, the key is kept in localStorage. Any script on this page
+                could read it, and a hosted project site shares one browser origin with every other
+                page under that host: their localStorage and IndexedDB are readable too. Only use this
+                if you control every page on the origin, or use a dedicated domain or browser profile.
               </p>
             ) : (
               <p className="field-note">
-                The key is kept in sessionStorage and is gone when this tab closes. Nothing is kept
-                in localStorage.
+                After you save settings, the key is kept in sessionStorage and is gone when this tab
+                closes. No new key is written to localStorage. A key remembered earlier remains there
+                until you use Clear key.
               </p>
             )}
             <p className="field-note">
@@ -544,10 +546,11 @@ export function SettingsPage({
               choose to remember it.
             </p>
             <p>
-              Text leaves this browser only when you run a nudger: the exact resolved prompt shown in
-              the preview — including any attached reference files — is sent to your chosen provider.
-              Provider-side retention is governed by that provider’s terms. Nothing is inserted into
-              your document automatically.
+              Text leaves this browser only when you run a nudger: the exact resolved prompt,
+              including any attached reference files, is sent to your chosen provider. Auto-run sends
+              that same prompt without opening the preview, so the setting is explicit per nudger;
+              every saved reply keeps the exact prompt. Provider-side retention is governed by that
+              provider’s terms. Nothing is inserted into your document automatically.
             </p>
             <p>
               No browser storage is secure against a compromised page or compromised device. If you

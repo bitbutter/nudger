@@ -148,8 +148,8 @@ export function ImportDialog({
         <div className="issue issue-block">
           <strong>Import stopped.</strong>
           <ul>
-            {errors.map((error) => (
-              <li key={error}>{error}</li>
+            {errors.map((error, index) => (
+              <li key={`${index}-${error}`}>{error}</li>
             ))}
           </ul>
         </div>
@@ -224,7 +224,9 @@ export function ImportDialog({
           ) : null}
 
           <p className="field-note">
-            Keys are excluded from exports. Reference files are included, so keep exports private.
+            Keys are excluded from exports. Imported nudgers always start with auto-run off and use
+            your current provider; per-nudger provider overrides are not imported. Reference files are
+            included, so keep exports private.
             {warnings.length > 0 ? ' Some items were dropped during validation; see below.' : ''}
           </p>
 
@@ -232,8 +234,8 @@ export function ImportDialog({
             <details className="import-warnings">
               <summary>{warnings.length} validation warning(s)</summary>
               <ul>
-                {warnings.map((warning) => (
-                  <li key={warning}>{warning}</li>
+                {warnings.map((warning, index) => (
+                  <li key={`${index}-${warning}`}>{warning}</li>
                 ))}
               </ul>
             </details>

@@ -55,7 +55,7 @@ describe('starter library', () => {
     expect(byName['Completeness coach'].facts).toBe(true);
     expect(byName['Hiring manager'].facts).toBe(true);
     expect(byName['Skeptical reviewer'].facts).toBe(true);
-    expect(byName['Fact checker'].facts).toBe(true);
+    expect(byName['Fact checker'].facts).toBe(false);
     for (const name of [
       'Structural editor',
       "Devil's advocate",

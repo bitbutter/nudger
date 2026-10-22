@@ -148,7 +148,7 @@ export function resolveProviderConfig(
   const providerId = nudger?.providerId ?? settings.providerId;
   const preset = getProviderPreset(providerId);
   const sameProvider = providerId === settings.providerId;
-  const baseUrl = (sameProvider ? settings.baseUrl : preset.baseUrl).trim() || preset.baseUrl;
+  const baseUrl = (sameProvider ? settings.baseUrl : preset.baseUrl || settings.baseUrl).trim() || preset.baseUrl;
   const model = (
     (nudger?.model ?? '').trim() ||
     (sameProvider ? settings.model.trim() : '') ||
@@ -252,6 +252,97 @@ function extractErrorMessage(raw: string): string {
     // Fall through to the plain-text slice.
   }
   return trimmed.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').slice(0, 400);
+}
+
+const MAX_RESPONSE_BYTES = 2_000_000;
+const MAX_ERROR_BODY_BYTES = 64_000;
+const OVERSIZED_RESPONSE_MESSAGE =
+  'The provider response is larger than 2 MB. The reply was not read. Check the endpoint and model.';
+
+/**
+ * localhost and loopback addresses are "potentially trustworthy" origins, so a
+ * page served over HTTPS may still call them over plain http. Remote http
+ * endpoints stay blocked because the browser would drop the request.
+ */
+export function isLoopbackHost(hostname: string): boolean {
+  const host = hostname.trim().toLowerCase().replace(/^\[/, '').replace(/\]$/, '');
+  if (!host) return false;
+  if (host === 'localhost' || host.endsWith('.localhost')) return true;
+  if (host === '::1' || host === '::ffff:127.0.0.1') return true;
+  return /^127\.\d{1,3}\.\d{1,3}\.\d{1,3}$/.test(host);
+}
+
+function isLoopbackUrl(url: string): boolean {
+  try {
+    return isLoopbackHost(new URL(url).hostname);
+  } catch {
+    return false;
+  }
+}
+
+type BoundedBody = { text: string; oversized: boolean };
+
+function decodeChunks(chunks: Uint8Array[]): string {
+  if (!chunks.length) return '';
+  const total = chunks.reduce((sum, chunk) => sum + chunk.byteLength, 0);
+  const merged = new Uint8Array(total);
+  let offset = 0;
+  for (const chunk of chunks) {
+    merged.set(chunk, offset);
+    offset += chunk.byteLength;
+  }
+  return new TextDecoder().decode(merged);
+}
+
+/**
+ * Reads a response body while stopping at a byte budget. A declared
+ * Content-Length over the budget is rejected without buffering anything, and a
+ * stream without that header is cut off at the budget.
+ */
+async function readBodyWithLimit(response: Response, limitBytes: number): Promise<BoundedBody> {
+  const declared = Number(response.headers.get('content-length') ?? Number.NaN);
+  if (Number.isFinite(declared) && declared > limitBytes) {
+    try {
+      await response.body?.cancel();
+    } catch {
+      // The body may already be locked or finished; nothing to release.
+    }
+    return { text: '', oversized: true };
+  }
+  const body = response.body;
+  if (!body) {
+    const text = await response.text();
+    return { text: text.slice(0, limitBytes), oversized: text.length > limitBytes };
+  }
+  const reader = body.getReader();
+  const chunks: Uint8Array[] = [];
+  let total = 0;
+  let oversized = false;
+  try {
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      if (!value) continue;
+      total += value.byteLength;
+      if (total > limitBytes) {
+        const keep = value.byteLength - (total - limitBytes);
+        if (keep > 0) chunks.push(value.subarray(0, keep));
+        oversized = true;
+        break;
+      }
+      chunks.push(value);
+    }
+  } finally {
+    if (oversized) {
+      try {
+        await reader.cancel();
+      } catch {
+        // Already cancelled or closed.
+      }
+    }
+    reader.releaseLock();
+  }
+  return { text: decodeChunks(chunks), oversized };
 }
 
 function parseRetryAfter(header: string | null): number | undefined {
@@ -392,8 +483,29 @@ export async function callModel(input: ModelCallInput): Promise<ModelCallResult>
     throw new NudgeError('config', 'No base URL set. Open Settings and enter the provider API URL.');
   }
   if (!/^https?:\/\//i.test(baseUrl)) baseUrl = `https://${baseUrl}`;
+  if (
+    /^http:\/\//i.test(baseUrl) &&
+    !isLoopbackUrl(baseUrl) &&
+    typeof window !== 'undefined' &&
+    window.location.protocol === 'https:'
+  ) {
+    throw new NudgeError(
+      'config',
+      'This page is served over HTTPS, so the browser blocks plain-http provider endpoints on other machines. Use an https:// endpoint, or point at a local model with http://localhost or http://127.0.0.1.',
+    );
+  }
 
-  const customHeaders = { ...(input.customHeaders ?? {}) };
+  const reservedHeaders = new Set([
+    'authorization',
+    'x-api-key',
+    'content-type',
+    'anthropic-version',
+    'anthropic-dangerous-direct-browser-access',
+  ]);
+  const customHeaders: Record<string, string> = {};
+  for (const [key, value] of Object.entries(input.customHeaders ?? {})) {
+    if (!reservedHeaders.has(key.toLowerCase())) customHeaders[key] = value;
+  }
   const headers: Record<string, string> = {
     'content-type': 'application/json',
     ...customHeaders,
@@ -442,7 +554,7 @@ export async function callModel(input: ModelCallInput): Promise<ModelCallResult>
 
   const started = Date.now();
   let response!: Response;
-  let raw!: string;
+  let raw = '';
   try {
     response = await fetch(url, {
       method: 'POST',
@@ -452,9 +564,27 @@ export async function callModel(input: ModelCallInput): Promise<ModelCallResult>
       credentials: 'omit',
       mode: 'cors',
     });
+    // The status decides how a large body is treated: an error body is never
+    // allowed to turn a real HTTP status into misleading noise, while a
+    // successful body over the budget is rejected instead of buffered.
+    if (!response.ok) {
+      const errorBody = await readBodyWithLimit(response, MAX_ERROR_BODY_BYTES);
+      throw classifyHttpError(
+        response.status,
+        errorBody.text,
+        response.headers.get('retry-after'),
+      );
+    }
     // Keep the timeout and cancel signal active until the body is fully read.
-    raw = await response.text();
+    const bounded = await readBodyWithLimit(response, MAX_RESPONSE_BYTES);
+    if (bounded.oversized) {
+      throw new NudgeError('bad_request', OVERSIZED_RESPONSE_MESSAGE, {
+        status: response.status,
+      });
+    }
+    raw = bounded.text;
   } catch (error) {
+    if (error instanceof NudgeError) throw error;
     if (timedOut) {
       throw new NudgeError(
         'timeout',
@@ -473,10 +603,6 @@ export async function callModel(input: ModelCallInput): Promise<ModelCallResult>
   } finally {
     clearTimeout(timer);
     if (input.signal) input.signal.removeEventListener('abort', onOuterAbort);
-  }
-
-  if (!response.ok) {
-    throw classifyHttpError(response.status, raw, response.headers.get('retry-after'));
   }
 
   let data: unknown;

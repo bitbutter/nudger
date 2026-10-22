@@ -6,4 +6,4 @@ dist-ssr/
 coverage/
 .vite/
 *.log
-*.export.json
+nudger-export-*.json

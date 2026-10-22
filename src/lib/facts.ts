@@ -34,8 +34,10 @@ function normalizeFacts(value: unknown): string[] {
   for (const item of list) {
     let raw = '';
     if (typeof item === 'string') raw = item;
-    else if (item && typeof item === 'object' && typeof (item as { text?: unknown }).text === 'string') {
-      raw = String((item as { text: string }).text);
+    else if (item && typeof item === 'object') {
+      const record = item as { text?: unknown; fact?: unknown };
+      if (typeof record.text === 'string') raw = record.text;
+      else if (typeof record.fact === 'string') raw = record.fact;
     }
     const fact = raw.trim().replace(/^[-•]\s*/, '').slice(0, 300);
     if (!fact) continue;
@@ -94,8 +96,26 @@ export function parseStructuredNudge(raw: string): ParsedNudge {
           : typeof record.nudge === 'string'
             ? record.nudge
             : '';
-      const facts = normalizeFacts(record.facts);
-      if (reply.trim()) return { text: reply.trim(), facts };
+      const hasFactsKey = Object.hasOwn(record, 'facts');
+      const factsValue = record.facts;
+      const facts = normalizeFacts(factsValue);
+      if (reply.trim()) {
+        if (!hasFactsKey) {
+          return {
+            text: reply.trim(),
+            facts: [],
+            factsError: 'The model omitted the fact list for this reply.',
+          };
+        }
+        if (typeof factsValue !== 'string' && !Array.isArray(factsValue)) {
+          return {
+            text: reply.trim(),
+            facts: [],
+            factsError: 'The model returned an invalid fact list for this reply.',
+          };
+        }
+        return { text: reply.trim(), facts };
+      }
       if (facts.length > 0) return { text: '', facts, malformedJson: true };
     } catch {
       // Try the next candidate or the recovery paths.
@@ -122,18 +142,34 @@ export function parseStructuredNudge(raw: string): ParsedNudge {
     };
   }
 
-  // The model ignored the JSON protocol but followed the old trailing-line
-  // convention. Keep the reply and the facts instead of failing the run.
-  const lines = stripped.split('\n');
-  for (let index = lines.length - 1; index >= 0; index -= 1) {
-    if (/^\s*FACTS\s*:/i.test(lines[index])) {
-      const value = lines[index].replace(/^\s*FACTS\s*:\s*/i, '').trim();
-      const facts = /^none\.?$/i.test(value)
-        ? []
-        : normalizeFacts(value.split(/\s*[|;]\s*/));
-      const before = lines.slice(0, index).join('\n').trim();
-      if (before) return { text: before, facts };
+  // A reply cut off inside the JSON string can still be salvaged; the facts are
+  // marked missing rather than failing the whole run.
+  const partialMatch =
+    /"reply"\s*:\s*"([\s\S]*)$/s.exec(stripped) ??
+    /"nudge"\s*:\s*"([\s\S]*)$/s.exec(stripped);
+  if (partialMatch) {
+    const partial = decodeJsonString(partialMatch[1]);
+    if (partial.trim()) {
+      return {
+        text: partial.trim(),
+        facts: [],
+        factsError:
+          'The response was cut off before the fact list was complete. The reply may be incomplete.',
+      };
     }
+  }
+
+  // The model ignored the JSON protocol but followed the trailing-line
+  // convention. Only the final non-empty line is treated as the fact line, so
+  // a legitimate "FACTS:" block mid-reply is not removed.
+  const lines = stripped.split('\n');
+  let last = lines.length - 1;
+  while (last >= 0 && !lines[last].trim()) last -= 1;
+  if (last >= 0 && /^\s*FACTS\s*:/i.test(lines[last])) {
+    const value = lines[last].replace(/^\s*FACTS\s*:\s*/i, '').trim();
+    const facts = /^none\.?$/i.test(value) ? [] : normalizeFacts(value.split(/\s*[|;]\s*/));
+    const before = lines.slice(0, last).join('\n').trim();
+    if (before) return { text: before, facts };
   }
 
   // If it was JSON-shaped, do not show a broken blob as prose.

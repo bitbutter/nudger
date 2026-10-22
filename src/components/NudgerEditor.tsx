@@ -99,6 +99,8 @@ export function NudgerEditor({
       prompt: template.prompt,
       description: template.description,
       templateId: template.id,
+      facts: template.facts === true,
+      factsPrompt: template.factsPrompt?.trim() || GENERIC_FACTS_FOCUS,
     });
     setTemplateChoice(template.id);
     if (!quiet) notify(`Loaded “${template.name}” into this nudger.`, 'success');
@@ -483,6 +485,19 @@ export function NudgerEditor({
                 value={draft.maxTokens}
                 onChange={(event) =>
                   patch({ maxTokens: Number.isFinite(event.target.valueAsNumber) ? event.target.valueAsNumber : 1 })
+                }
+              />
+            </label>
+            <label className="field">
+              <span>Reply budget</span>
+              <input
+                className="input"
+                type="number"
+                min={0}
+                max={10000}
+                value={draft.budget}
+                onChange={(event) =>
+                  patch({ budget: Number.isFinite(event.target.valueAsNumber) ? event.target.valueAsNumber : 0 })
                 }
               />
             </label>

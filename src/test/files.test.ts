@@ -106,6 +106,75 @@ describe('prepareRun file handling', () => {
     expect(withTrim.prompt).toContain('TAIL-MARKER');
   });
 
+  it('keeps the fact protocol when the system is trimmed', () => {
+    const longDoc = { ...doc, currentText: 'x'.repeat(4_000) };
+    const nudger = testNudger({
+      facts: true,
+      factsPrompt: 'Focus on names in the notes.',
+      system: `You are a coach.\n${'y'.repeat(4_000)}`,
+      maxContextChars: 2_000,
+    });
+    const prepared = prepareRun({
+      nudger,
+      document: longDoc,
+      caret: { start: longDoc.currentText.length, end: longDoc.currentText.length },
+      files: [],
+      settings: testSettings,
+      trimToLimit: true,
+    });
+    expect(prepared.trimmed).toBe(true);
+    expect(prepared.overLimit).toBe(false);
+    expect(prepared.totalChars).toBeLessThanOrEqual(2_000);
+    expect(prepared.system).toContain('FACT CLUES PROTOCOL');
+    expect(prepared.system).toContain('Focus on names in the notes.');
+    expect(prepared.system).toContain('TRUNCATED BY NUDGER');
+  });
+
+  it('does not claim a file was sent when trimming removed its block', () => {
+    const filler = 'x'.repeat(4_000);
+    const nudger = testNudger({
+      fileIds: [notes.id],
+      maxContextChars: 1_000,
+      prompt: `HEAD-MARKER\n${filler}\n{{files}}\n${filler}\nTAIL-MARKER`,
+    });
+    const prepared = prepareRun({
+      nudger,
+      document: doc,
+      caret: { start: 5, end: 5 },
+      files: [notes],
+      settings: testSettings,
+      trimToLimit: true,
+    });
+    expect(prepared.trimmed).toBe(true);
+    expect(prepared.prompt).toContain('HEAD-MARKER');
+    expect(prepared.prompt).toContain('TAIL-MARKER');
+    expect(prepared.prompt).not.toContain('REFERENCE FILE: notes.md');
+    expect(prepared.fullPrompt).not.toContain('1.2 million requests');
+    expect(prepared.sentFiles).toEqual([]);
+    expect(prepared.fileIds).toEqual([]);
+  });
+
+  it('still reports a file that survives the trim', () => {
+    const filler = 'x'.repeat(4_000);
+    const nudger = testNudger({
+      fileIds: [notes.id],
+      maxContextChars: 1_000,
+      prompt: `HEAD-MARKER\n{{files}}\n${filler}\nTAIL-MARKER`,
+    });
+    const prepared = prepareRun({
+      nudger,
+      document: doc,
+      caret: { start: 5, end: 5 },
+      files: [notes],
+      settings: testSettings,
+      trimToLimit: true,
+    });
+    expect(prepared.trimmed).toBe(true);
+    expect(prepared.prompt).toContain('REFERENCE FILE: notes.md');
+    expect(prepared.sentFiles.map((f) => f.name)).toEqual(['notes.md']);
+    expect(prepared.fileIds).toEqual([notes.id]);
+  });
+
   it('puts the fact protocol in the main system prompt only when facts are on', () => {
     const withoutFacts = prepareRun({
       nudger: testNudger({ facts: false }),

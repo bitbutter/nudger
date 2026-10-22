@@ -63,7 +63,7 @@ Reply statuses: `new`, `pinned`, `dismissed`, `archived`. The newest `new` or `p
 
 A nudger can return a short list of concrete specifics beneath its reply: names, dates, numbers, examples, claims or links the writer should verify or might need to look up. The list is a **memory and verification aid**, not a claim that anything was checked.
 
-- **Per nudger, selectively on.** Completeness coach, Hiring manager, Skeptical reviewer and Fact checker start with fact clues on; the structural, style, continuation, research-planner and definition nudgers start with them off. Every nudger has a toggle, and custom nudgers start off. This is deliberate: a fact list is useful when the role is about specifics, and noise when it is about structure or voice.
+- **Per nudger, selectively on.** Completeness coach, Hiring manager and Skeptical reviewer start with fact clues on; the structural, style, continuation, research-planner, definition and Fact checker nudgers start with them off. Every nudger has a toggle, and custom nudgers start off. This is deliberate: a fact list is useful when the role is about specifics, and noise when it is about structure or voice.
 - **One request, one JSON object.** When fact clues are on, the model is asked to return `{"reply":"...","facts":["..."]}`. The reply and the facts come from the same reading of the same material; there is no second request and no doubled input cost.
 - **The facts are tied to the nudge.** The prompt requires every clue to support, sharpen or challenge the specific question or critique in the reply field. A nudge about a named project should yield that project's exact name, language/stack, release date or version when the material contains them; unrelated material is omitted. If no clue relates to the nudge, the list is empty rather than padded.
 - **The prompt is fact-specific.** The nudger editor has an editable “What should the facts relate to?” field. The fixed JSON protocol and the source-bound rules (at most five, only the supplied material, no invention, filename in parentheses when relevant, prefer exact values, most relevant first) are appended to the system prompt at run time. The resolved-prompt preview shows the whole thing.
@@ -72,7 +72,7 @@ A nudger can return a short list of concrete specifics beneath its reply: names,
 - **Provider-agnostic.** This does not rely on any provider's JSON mode or tool-calling support; it is a prompt protocol validated locally, so it works through the same OpenAI-compatible and Anthropic adapters as everything else.
 - **Not verified facts.** The prompt forbids invention and asks for specifics tied to the nudge, but the model can still be wrong. The UI labels the list “behind this nudge; model-generated; verify”. For a deeper, dedicated pass, add a Fact checker nudger with no fact-clue list; its whole reply is the research/verification work.
 
-The fact protocol adds roughly 100 tokens to the system prompt. Turning it off restores a plain-text reply with no protocol and no list.
+The fact protocol adds roughly 300 tokens to the system prompt. Turning it off restores a plain-text reply with no protocol and no list.
 
 ### Budget, done, auto-run
 
@@ -223,7 +223,8 @@ A nudger can choose its own provider and model. It still uses the one API key in
 ### Key handling
 
 - **Remember off (default):** the key is kept in `sessionStorage`. It survives a reload in the same tab and disappears when the tab is closed.
-- **Remember on:** the key is kept in `localStorage` and persists across restarts. The UI warns that any script on the page could read it.
+- **Remember on:** the key is kept in `localStorage` and persists across restarts. The UI warns that any script on the page could read it, and that a hosted project site shares one browser origin with every other page under that host — those pages can read the same localStorage and IndexedDB. Only remember a key if you control every page on the origin, or use a dedicated domain/browser profile.
+- **Shared origin:** `bitbutter.github.io` is one origin for every project page on the account. A different repository page, a collaborator's page or an XSS on any of them can read this app's remembered key and local data. The default (sessionStorage) limits persistence but not same-origin access while the tab is open.
 - Keys are never written to IndexedDB, never included in exports, never logged, and only sent to the selected provider.
 - **Clear key** removes both stores. **Clear all data** lets you remove the key too.
 - Changing the remember setting and clicking Save settings (or Save key) moves the key between stores deliberately. Loading or importing settings never silently moves or deletes a key.
@@ -235,7 +236,7 @@ A nudger can choose its own provider and model. It still uses the one API key in
 
 - Static page. No accounts, servers, analytics, telemetry, third-party fonts, third-party scripts or service workers.
 - Documents, versions, reference files, nudgers, replies, custom templates and settings are stored in IndexedDB in this browser.
-- The only network calls are the provider requests triggered by **Run**, **Run all**, auto-run, or **Test connection**. Each request contains the exact resolved system + user prompt (including any attached reference files) shown in the preview. Nothing else is sent.
+- The only network calls are the provider requests triggered by **Run**, **Run all**, auto-run, or **Test connection**. Each request contains the exact resolved system + user prompt (including any attached reference files). The resolved prompt is shown in Preview and stored with the reply; auto-run sends it without opening the preview. Nothing else is sent.
 - Provider-side retention and training policies are governed by the provider's terms, not by nudger.
 - Exports contain every document, version, reference file, nudger, reply, custom template and setting (without the API key). Treat exports as sensitive, because they include your files and custom headers.
 - Browser storage can be cleared by the browser, by private-mode exit, or by clearing site data. Export regularly if the material matters.
@@ -253,7 +254,7 @@ There is a visible privacy note in the sidebar and a fuller privacy section in S
 - **Merge:** add items whose ids are not already present. Existing documents, files, nudgers and settings are untouched. A file whose name already exists is reused for imported nudgers that reference it, so `{{file:name}}` keeps resolving. Duplicate ids are skipped. Settings are not changed.
 - **Replace:** delete all current app data and settings, then load the export (with the endpoint safeguards below). Reference files in the export replace the library. The API key is never imported or deleted.
 
-Safety on replace: the exported **base URL and custom headers are ignored by default** (a hostile export must not be able to point your key at another host). Import shows the imported host and offers an explicit checkbox to restore those network settings. The local **remember key** preference is also kept, so an import cannot move your key between storage modes.
+Safety on replace: the exported **base URL and custom headers are ignored by default** (a hostile export must not be able to point your key at another host). Import shows the imported host and offers an explicit checkbox to restore those network settings. The local **remember key** preference is also kept, so an import cannot move your key between storage modes. Imported nudgers always start with **auto-run off** and use your current provider; per-nudger provider overrides are not imported, so a shared nudger pack cannot silently redirect the key to another preset host.
 
 Validation drops malformed items with visible warnings rather than importing partial garbage. Unsupported schema versions are rejected. Import does not validate the semantics of prompts; it does validate types, file extensions and references.
 
@@ -283,11 +284,11 @@ The production build injects this meta CSP (development intentionally omits it s
 
 ```text
 default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline';
-img-src 'self' data:; font-src 'self'; connect-src 'self' https:;
+img-src 'self' data:; font-src 'self'; connect-src 'self' https: http://localhost:* http://127.0.0.1:*;
 base-uri 'none'; form-action 'none'; object-src 'none'
 ```
 
-`connect-src https:` is broad **because custom provider endpoints are allowed**. This is the deliberate tradeoff: no third-party scripts are loaded, and `script-src 'self'` blocks injected script, but the page can send data to any HTTPS origin the user configures. The resolved prompt preview and the explicit provider setting are what keep that intentional. A meta CSP cannot set `frame-ancestors`; there is no other backend defense.
+`connect-src https:` is broad **because custom provider endpoints are allowed**. This is the deliberate tradeoff: no third-party scripts are loaded, and `script-src 'self'` blocks injected script, but the page can send data to any HTTPS origin the user configures. The resolved prompt preview and the explicit provider setting are what keep that intentional. The two loopback entries let an HTTPS page talk to a local model server (for example Ollama at `http://localhost:11434`) over plain http; browsers treat loopback as a potentially trustworthy origin, and the app blocks plain `http://` to any other host when the page itself is served over HTTPS. A meta CSP cannot set `frame-ancestors`; there is no other backend defense.
 
 ---
 
@@ -334,7 +335,7 @@ The API key is not part of persisted `Settings`. IndexedDB tables: `documents`, 
 18. **The app uses hash routing.** It requires no server rewrites, works from a subpath, and makes every view reloadable.
 19. **Exports include replies** even though the requirement only listed documents, versions, files, nudgers, templates and settings, because reply history is the audit trail for prompts. Keys remain excluded.
 20. **The theme is dark by default**, with a light theme and a stacked/beside layout preference in Settings.
-21. **Fact clues are per nudger and selectively on**, not a document-wide panel. The four fact-oriented starters enable them; the rest and custom nudgers start off, and every nudger can toggle them. A document-wide list would be generic, duplicate work, and ignore each nudger's reference files.
+21. **Fact clues are per nudger and selectively on**, not a document-wide panel. The three fact-oriented starters enable them; the rest and custom nudgers start off, and every nudger can toggle them. A document-wide list would be generic, duplicate work, and ignore each nudger's reference files.
 22. **Fact clues share the nudge response** as one JSON object (`reply` + `facts`), not a second extraction request. The prompt protocol is validated locally, tolerates fences/prose, falls back to the plain reply, and refuses malformed JSON rather than showing raw data. This keeps cost and latency at one call while giving structured facts. The tradeoff is that a model can ignore the JSON protocol; the reply is then kept and the missing list is reported.
 23. **Facts are clues, not verified facts.** They are stored per reply, labeled “model-generated; verify”, and never inserted into the draft. A dedicated Fact checker nudger remains the route for a deeper verification pass.
 
@@ -342,7 +343,7 @@ The API key is not part of persisted `Settings`. IndexedDB tables: `documents`, 
 
 ## Testing
 
-`npm test` runs 97 tests in 11 files:
+`npm test` runs 101 tests in 11 files:
 
 - placeholder resolution (`before_cursor`, `before_last_word`, paragraph, selection, case-insensitivity, unknown placeholders)
 - reference-file insertion, wrappers, auto-append, missing/unselected files, unreferenced warnings, oversized trim

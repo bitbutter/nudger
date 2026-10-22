@@ -7,7 +7,7 @@ import {
   selectedFilesForNudger,
   type TemplateIssue,
 } from './placeholders';
-import { appendFilesSection } from './referenceFiles';
+import { appendFilesSection, textContainsFile } from './referenceFiles';
 import { estimateTokens } from './util';
 import {
   buildFactsInstruction,
@@ -160,22 +160,37 @@ export function prepareRun(options: PrepareOptions): PreparedRun {
   const maxContextChars = Math.max(1_000, nudger.maxContextChars || settings.maxContextChars);
   const facts = nudger.facts === true;
   const factsPrompt = (nudger.factsPrompt || '').trim() || GENERIC_FACTS_FOCUS;
-  let system = systemResolution.text;
-  if (facts) {
-    system = [system.trim(), buildFactsInstruction(factsPrompt)].filter(Boolean).join('\n\n');
-  }
+  // The fact protocol is appended after the nudger's own system text. It is a
+  // fixed cost that trimming must preserve; only the base system is shortened.
+  const factsProtocol = facts ? buildFactsInstruction(factsPrompt) : '';
+  let baseSystem = systemResolution.text;
+  const withFactsProtocol = () =>
+    [baseSystem.trim(), factsProtocol].filter(Boolean).join('\n\n');
+  let system = withFactsProtocol();
   let overLimit = system.length + prompt.length > maxContextChars;
   let trimmed = false;
   if (overLimit && options.trimToLimit) {
-    const next = trimPrompts(system, prompt, maxContextChars);
-    system = next.system;
-    prompt = next.prompt;
-    trimmed = true;
+    const reserved = factsProtocol ? factsProtocol.length + 2 : 0;
+    const budget = maxContextChars - reserved;
+    // If the protocol alone exceeds the budget there is nothing meaningful to
+    // trim to; leave the request as is and keep reporting the over-limit state.
+    if (budget > 0) {
+      const next = trimPrompts(baseSystem, prompt, budget);
+      baseSystem = next.system;
+      prompt = next.prompt;
+      trimmed = true;
+    }
+    system = withFactsProtocol();
     overLimit = system.length + prompt.length > maxContextChars;
   }
 
   const totalChars = system.length + prompt.length;
-  const sentFiles = selected.filter((file) => used.has(file.id));
+  // Trimming can remove a file block, so derive the sent list from the final
+  // text instead of from the pre-trim template resolution.
+  const finalText = `${system}\n\n${prompt}`;
+  const sentFiles = selected.filter(
+    (file) => used.has(file.id) && textContainsFile(finalText, file),
+  );
 
   return {
     nudgerId: nudger.id,

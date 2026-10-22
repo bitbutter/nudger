@@ -1084,6 +1084,13 @@ html[data-theme='light'] .btn-primary {
   margin-bottom: 6px;
 }
 
+.reply-usage {
+  color: var(--faint);
+  font-size: 9.5px;
+  font-variant-numeric: tabular-nums;
+  margin-left: auto;
+}
+
 .reply-model {
   margin-left: auto;
   font-family: var(--font-mono);

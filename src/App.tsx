@@ -434,6 +434,14 @@ export default function App() {
       const mod = event.ctrlKey || event.metaKey;
       if (!mod) return;
       if (modalOpenRef.current) return;
+      const target = event.target instanceof HTMLElement ? event.target : null;
+      const isFormField =
+        target &&
+        (target.tagName === 'INPUT' ||
+          target.tagName === 'TEXTAREA' ||
+          target.tagName === 'SELECT' ||
+          target.isContentEditable);
+      if (isFormField && !target.classList.contains('editor-area')) return;
       if (event.altKey && !event.shiftKey && event.key.toLowerCase() === 'n') {
         event.preventDefault();
         newDocumentRef.current();
@@ -482,10 +490,11 @@ export default function App() {
   };
 
   const duplicateActive = async () => {
-    if (!activeDocRef.current) return;
+    const id = activeDocRef.current?.id;
+    if (!id) return;
     try {
       await draft.flush();
-      const copy = await store.duplicateDocument(activeDocRef.current.id);
+      const copy = await store.duplicateDocument(id);
       if (copy) {
         notify('Document duplicated.', 'success');
         navigate({ name: 'doc', id: copy.id });
@@ -516,10 +525,11 @@ export default function App() {
   };
 
   const saveVersion = async (label?: string) => {
-    if (!activeDocRef.current) return;
+    const id = activeDocRef.current?.id;
+    if (!id) return;
     try {
       await draft.flush();
-      await store.createVersion(activeDocRef.current.id, label);
+      await store.createVersion(id, label);
       notify('Version saved.', 'success');
     } catch (error) {
       notify(describeStorageError(error), 'error');
@@ -597,6 +607,8 @@ export default function App() {
         description: value.description ?? '',
         system: value.system,
         prompt: value.prompt,
+        facts: value.facts,
+        factsPrompt: value.factsPrompt,
         builtin: false,
         createdAt: Date.now(),
         updatedAt: Date.now(),

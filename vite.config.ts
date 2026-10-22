@@ -15,7 +15,9 @@ const CSP = [
   "style-src 'self' 'unsafe-inline'",
   "img-src 'self' data:",
   "font-src 'self'",
-  "connect-src 'self' https:",
+  // Loopback origins are listed separately so a local model server can be
+  // reached over plain http; browsers treat loopback as potentially trustworthy.
+  "connect-src 'self' https: http://localhost:* http://127.0.0.1:*",
   "base-uri 'none'",
   "form-action 'none'",
   "object-src 'none'",
@@ -26,9 +28,11 @@ function cspPlugin() {
     name: 'nudger-csp-meta',
     apply: 'build' as const,
     transformIndexHtml(html: string) {
+      // Put the policy at the very start of <head> so it governs all later
+      // tags, including the module script Vite injects during the build.
       return html.replace(
-        '</head>',
-        `    <meta http-equiv="Content-Security-Policy" content="${CSP}" />\n  </head>`,
+        /<head([^>]*)>/i,
+        `<head$1>\n    <meta http-equiv="Content-Security-Policy" content="${CSP}" />`,
       );
     },
   };

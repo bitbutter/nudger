@@ -101,7 +101,11 @@ export function NudgerBoard(props: NudgerBoardProps) {
           {nudgers.map((nudger, index) => {
             const rawState = props.runStates[nudger.id];
             const state = rawState?.documentId === props.documentId ? rawState : undefined;
-            const busyElsewhere = Boolean(rawState && rawState.documentId !== props.documentId);
+            const busyElsewhere = Boolean(
+              rawState &&
+                rawState.documentId !== props.documentId &&
+                rawState.phase !== 'error',
+            );
             return (
             <NudgerCard
               key={nudger.id}

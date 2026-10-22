@@ -82,7 +82,12 @@ function ReplyItem({ reply, compact, onStatus, onRetry }: ReplyItemProps) {
     notify(ok ? 'Resolved prompt copied.' : 'Could not copy the prompt.', ok ? 'success' : 'error');
   };
   const copyFacts = async () => {
-    const ok = await copyText((reply.facts ?? []).join('\n'));
+    const facts = reply.facts ?? [];
+    const text = [
+      'Facts to check (model-generated; verify against the source):',
+      ...facts.map((fact) => `- ${fact}`),
+    ].join('\n');
+    const ok = await copyText(text);
     notify(ok ? 'Fact clues copied.' : 'Could not copy the fact clues.', ok ? 'success' : 'error');
   };
 
@@ -94,6 +99,11 @@ function ReplyItem({ reply, compact, onStatus, onRetry }: ReplyItemProps) {
         <span className="reply-model" title={`Provider: ${reply.provider}`}>
           {reply.model}
         </span>
+        {reply.usage && (reply.usage.inputTokens != null || reply.usage.outputTokens != null) ? (
+          <span className="reply-usage" title="Provider-reported token usage">
+            {reply.usage.inputTokens ?? '?'} in / {reply.usage.outputTokens ?? '?'} out
+          </span>
+        ) : null}
       </header>
       <div className="reply-text">{reply.text}</div>
       {reply.facts && reply.facts.length > 0 ? (
@@ -142,8 +152,13 @@ function ReplyItem({ reply, compact, onStatus, onRetry }: ReplyItemProps) {
             Dismiss
           </button>
         )}
-        <button type="button" className="link-btn" onClick={onRetry}>
-          Retry
+        <button
+          type="button"
+          className="link-btn"
+          onClick={onRetry}
+          title="Starts a new run and uses one reply from the budget"
+        >
+          Run again
         </button>
       </div>
       <details className="reply-prompt">

@@ -138,7 +138,7 @@ export function createStore(database: NudgerDB = db) {
           ...version,
           id: newId(),
           documentId: copy.id,
-          createdAt: now,
+          createdAt: version.createdAt,
         });
       }
       return copy;
@@ -586,7 +586,10 @@ export function createStore(database: NudgerDB = db) {
         for (const reply of bundle.replies) {
           if (replyIds.has(reply.id)) continue;
           if (!docIds.has(reply.documentId) || !nudgerIds.has(reply.nudgerId)) continue;
-          await replies.add(reply);
+          const mappedFileIds = reply.fileIds
+            .map((id) => fileIdRemap.get(id))
+            .filter((id): id is string => id !== undefined && fileIds.has(id));
+          await replies.add({ ...reply, fileIds: mappedFileIds });
           replyIds.add(reply.id);
           summary.replies += 1;
         }
@@ -606,7 +609,9 @@ export function createStore(database: NudgerDB = db) {
           next.rememberKey = currentSettings.rememberKey;
           if (!options.restoreNetworkSettings) {
             // Never point the stored API key at a host that arrived in an import.
-            next.baseUrl = getProviderPreset(next.providerId).baseUrl;
+            // Custom/compatible presets have no base URL; keep the current one in
+            // that case rather than leaving the app unusable after an import.
+            next.baseUrl = getProviderPreset(next.providerId).baseUrl || currentSettings.baseUrl;
             next.customHeaders = undefined;
           }
           await settingsTable.put({ key: 'app', value: stripApiKey(next) });

@@ -73,7 +73,7 @@ function TemplateEditor({
       files: [],
       settings,
     });
-  }, [draft.name, draft.prompt, draft.system, settings, document, caret]);
+  }, [draft.name, draft.prompt, draft.system, draft.facts, draft.factsPrompt, settings, document, caret]);
 
   const contextMissing = !hasContextPlaceholder(`${draft.system}\n${draft.prompt}`);
   const filePlaceholders = listFilePlaceholders(`${draft.system}\n${draft.prompt}`);
@@ -383,6 +383,7 @@ export function TemplatesPage({
 
       {editor ? (
         <TemplateEditor
+          key={`${editor.mode}:${editor.template.id}`}
           state={editor}
           settings={settings}
           document={document}

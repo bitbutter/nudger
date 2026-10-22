@@ -169,7 +169,7 @@ export function DocumentView(props: DocumentViewProps) {
         <div className="banner banner-warn">
           <span>
             No API key yet. Add one in Settings to let nudgers read your draft. Nothing is sent until
-            you run a nudger, and only the prompt preview is sent.
+            you run a nudger, and the resolved prompt is what gets sent.
           </span>
           <button type="button" className="btn btn-sm btn-primary" onClick={props.onOpenSettings}>
             Open settings

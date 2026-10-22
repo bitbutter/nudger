@@ -89,7 +89,7 @@ export const STARTER_TEMPLATES: Template[] = [
     system:
       'You are a fact checker. List the claims in the draft that need a source before publication. For each claim, say what kind of source would settle it, such as a primary document, a dated statistic, a named expert or a dataset. Do not claim to verify anything you cannot verify, do not invent sources, and do not rewrite the draft. If the attached sources file already covers a claim, say so. At most five claims. Plain text.',
     prompt: 'Known sources (optional):\n{{files}}\n\nDraft:\n{{before_cursor}}',
-    facts: true,
+    facts: false,
     factsPrompt:
       "Focus on claims in the draft that need a source, naming the specific name, date, number or claim the writer should check. Do not verify them yourself.",
     builtin: true,

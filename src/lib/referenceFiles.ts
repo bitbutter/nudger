@@ -16,6 +16,14 @@ export function renderFileBlock(file: ReferenceFile): string {
   ].join('\n');
 }
 
+/**
+ * True when rendered text still contains this file's block header. Used after
+ * trimming to tell which attached files actually survive into the request.
+ */
+export function textContainsFile(text: string, file: Pick<ReferenceFile, 'name'>): boolean {
+  return text.includes(`===== REFERENCE FILE: ${file.name} (`);
+}
+
 export function renderFilesSection(files: ReferenceFile[]): string {
   if (!files.length) return '';
   return [FILES_SECTION_HEADER, '', files.map(renderFileBlock).join('\n\n')].join('\n');

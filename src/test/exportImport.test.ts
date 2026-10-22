@@ -112,6 +112,9 @@ describe('export validation', () => {
       wordCount: 1,
     });
     bundle.nudgers[0].fileIds = ['f1', 'missing-file'];
+    bundle.nudgers[0].autoRun = true;
+    bundle.nudgers[0].providerId = 'openai';
+    bundle.nudgers[0].budget = 99_999;
     bundle.replies.push({
       ...bundle.replies[0],
       id: 'r2',
@@ -122,6 +125,9 @@ describe('export validation', () => {
     if (!result.ok) return;
     expect(result.bundle.files).toHaveLength(1);
     expect(result.bundle.nudgers[0].fileIds).toEqual(['f1']);
+    expect(result.bundle.nudgers[0].autoRun).toBe(false);
+    expect(result.bundle.nudgers[0].providerId).toBeUndefined();
+    expect(result.bundle.nudgers[0].budget).toBe(10_000);
     expect(result.bundle.replies).toHaveLength(1);
     expect(result.warnings.some((w) => w.includes('cv.pdf'))).toBe(true);
     expect(result.warnings.some((w) => w.includes('not in the export'))).toBe(true);

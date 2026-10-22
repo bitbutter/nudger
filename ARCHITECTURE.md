@@ -55,9 +55,9 @@ Trimming is explicit: `trimPromptMiddle` keeps the start and end of an oversized
 
 ### Fact clues
 
-Fact clues are a per-nudger option, not a document-wide feature. The system-prompt protocol is fixed; only the focus sentence is stored per nudger (`factsPrompt`). The model returns one JSON object containing both the reply and the facts, so the reply and its clues come from one reading of one request. The protocol requires every clue to relate directly to the nudge in the reply field: a named project should yield its name, stack, release date or version when the material has it, and unrelated material is omitted. The protocol adds roughly 100 tokens; there is no second provider call.
+Fact clues are a per-nudger option, not a document-wide feature. The system-prompt protocol is fixed; only the focus sentence is stored per nudger (`factsPrompt`). The model returns one JSON object containing both the reply and the facts, so the reply and its clues come from one reading of one request. The protocol requires every clue to relate directly to the nudge in the reply field: a named project should yield its name, stack, release date or version when the material has it, and unrelated material is omitted. The protocol adds roughly 300 tokens; there is no second provider call.
 
-The parser is deliberately layered: JSON object → fenced/prose-wrapped JSON → a reply/facts regex recovery → an old trailing `FACTS:` line fallback → plain prose as the reply with `factsError`. A response that starts like JSON and cannot be recovered fails the run rather than displaying JSON as prose. Facts are labeled model-generated and are never treated as verified. The starter library enables facts for the four fact-oriented roles; custom and style/continuation nudgers default off.
+The parser is deliberately layered: JSON object → fenced/prose-wrapped JSON → a reply/facts regex recovery → an old trailing `FACTS:` line fallback → plain prose as the reply with `factsError`. A response that starts like JSON and cannot be recovered fails the run rather than displaying JSON as prose. Facts are labeled model-generated and are never treated as verified. The starter library enables facts for the three fact-oriented roles; custom, style/continuation and Fact checker nudgers default off.
 
 ## Provider layer
 
@@ -85,10 +85,10 @@ Exports are validated with `validateBundle` before import: schema version, requi
 
 ## Security and privacy
 
-- No third-party scripts, fonts, analytics or telemetry. The production build injects a meta CSP with `script-src 'self'`; `connect-src https:` is broad only because custom provider endpoints are allowed. This is documented in the README as a deliberate tradeoff.
+- No third-party scripts, fonts, analytics or telemetry. The production build injects a meta CSP with `script-src 'self'`; `connect-src https:` is broad only because custom provider endpoints are allowed, plus explicit `http://localhost:*` and `http://127.0.0.1:*` entries for local model servers. This is documented in the README as a deliberate tradeoff. The app itself refuses plain `http://` endpoints on other hosts when the page is served over HTTPS, before any request is made.
 - All model output and stored prompts are rendered as text (`white-space: pre-wrap`), never as HTML.
-- Keys are masked in UI, kept out of IndexedDB and exports, never logged, and sent only to the configured provider. Loading settings does not silently migrate or delete keys.
-- Text leaves the browser only on an explicit run/test, and the preview shows the exact request. Fact clues use the same single request; there is no separate extraction request.
+- Keys are masked in UI, kept out of IndexedDB and exports, never logged, and sent only to the configured provider. Loading settings does not silently migrate or delete keys. On a shared origin such as a GitHub Pages project site, other pages under the same host can read localStorage and IndexedDB; the remember-key warning states this.
+- Text leaves the browser only on an explicit run/test. The preview shows the resolved request and each saved reply stores it; auto-run sends the same request without opening the preview. Fact clues use the same single request; there is no separate extraction request.
 
 ## Testing
 

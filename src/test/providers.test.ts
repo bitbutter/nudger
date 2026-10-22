@@ -154,6 +154,145 @@ describe('provider requests', () => {
     expect(body.max_tokens).toBe(DEFAULT_SETTINGS.maxTokens);
   });
 
+  it('ignores reserved custom headers so the key and protocol headers cannot be overridden', async () => {
+    let captured: Record<string, string> = {};
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (_url: string, init: RequestInit) => {
+        captured = init.headers as Record<string, string>;
+        return jsonResponse({ content: [{ type: 'text', text: 'ok' }] });
+      }),
+    );
+    const anthropic = resolveProviderConfig({
+      ...DEFAULT_SETTINGS,
+      providerId: 'anthropic',
+      baseUrl: 'https://api.anthropic.com',
+    });
+    await callModel({
+      provider: anthropic,
+      apiKey: 'sk-ant-real',
+      system: '',
+      user: 'Hi',
+      customHeaders: {
+        Authorization: 'Bearer attacker',
+        'X-Api-Key': 'attacker',
+        'Content-Type': 'text/plain',
+        'Anthropic-Version': '1999-01-01',
+        'anthropic-dangerous-direct-browser-access': 'false',
+        'X-Client': 'nudger',
+      },
+      timeoutMs: 5000,
+    });
+    expect(captured.authorization).toBeUndefined();
+    expect(captured['x-api-key']).toBe('sk-ant-real');
+    expect(captured['content-type']).toBe('application/json');
+    expect(captured['anthropic-version']).toBe('2023-06-01');
+    expect(captured['anthropic-dangerous-direct-browser-access']).toBe('true');
+    expect(captured['X-Client']).toBe('nudger');
+  });
+
+  it('falls back to the settings base URL for providers without a preset URL', () => {
+    for (const providerId of ['openai-compatible', 'custom'] as const) {
+      const resolved = resolveProviderConfig(DEFAULT_SETTINGS, {
+        providerId,
+        model: 'local-model',
+        temperature: 0.3,
+        maxTokens: 200,
+      });
+      expect(resolved.baseUrl).toBe(DEFAULT_SETTINGS.baseUrl);
+      expect(resolved.model).toBe('local-model');
+      expect(resolved.preset.kind).toBe('openai');
+    }
+  });
+
+  it('allows plain http loopback endpoints from an https page', async () => {
+    vi.stubGlobal('window', { location: { protocol: 'https:' } });
+    const fetchMock = vi.fn(async () => jsonResponse({ choices: [{ message: { content: 'ok' } }] }));
+    vi.stubGlobal('fetch', fetchMock);
+    for (const baseUrl of ['http://localhost:11434/v1', 'http://127.0.0.1:1234/v1']) {
+      const local = resolveProviderConfig({
+        ...DEFAULT_SETTINGS,
+        providerId: 'openai-compatible',
+        baseUrl,
+        model: 'local-model',
+      });
+      await expect(
+        callModel({ provider: local, apiKey: 'k', system: '', user: 'Hi', timeoutMs: 5000 }),
+      ).resolves.toMatchObject({ text: 'ok' });
+    }
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect((fetchMock.mock.calls[0] as unknown as [string])[0]).toBe(
+      'http://localhost:11434/v1/chat/completions',
+    );
+  });
+
+  it('blocks plain http to a remote host from an https page', async () => {
+    vi.stubGlobal('window', { location: { protocol: 'https:' } });
+    const fetchMock = vi.fn(async () => jsonResponse({ choices: [{ message: { content: 'ok' } }] }));
+    vi.stubGlobal('fetch', fetchMock);
+    const remote = resolveProviderConfig({
+      ...DEFAULT_SETTINGS,
+      providerId: 'openai-compatible',
+      baseUrl: 'http://example.test/v1',
+      model: 'remote-model',
+    });
+    await expect(
+      callModel({ provider: remote, apiKey: 'k', system: '', user: 'Hi', timeoutMs: 5000 }),
+    ).rejects.toMatchObject({ kind: 'config' });
+    expect(fetchMock).not.toHaveBeenCalled();
+    try {
+      await callModel({ provider: remote, apiKey: 'k', system: '', user: 'Hi', timeoutMs: 5000 });
+    } catch (error) {
+      expect((error as Error).message).toMatch(/HTTPS/);
+      expect((error as Error).message).toContain('localhost');
+    }
+  });
+
+  it('rejects an oversized success body instead of buffering it', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => new Response('x'.repeat(2_000_001))));
+    await expect(
+      callModel({ provider, apiKey: 'k', system: '', user: 'Hi', timeoutMs: 5000 }),
+    ).rejects.toThrow(/2 MB/);
+  });
+
+  it('rejects a declared oversized Content-Length before reading the body', async () => {
+    let cancelled = false;
+    const fake = {
+      ok: true,
+      status: 200,
+      headers: new Headers({ 'content-length': '3000000' }),
+      body: {
+        cancel: async () => {
+          cancelled = true;
+        },
+      },
+      text: async () => {
+        throw new Error('the body must not be read');
+      },
+    };
+    vi.stubGlobal('fetch', vi.fn(async () => fake as unknown as Response));
+    await expect(
+      callModel({ provider, apiKey: 'k', system: '', user: 'Hi', timeoutMs: 5000 }),
+    ).rejects.toThrow(/2 MB/);
+    expect(cancelled).toBe(true);
+  });
+
+  it('reports the real HTTP status when an error body is oversized', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(
+        async () =>
+          new Response('x'.repeat(3_000_000), {
+            status: 429,
+            headers: { 'content-type': 'text/plain', 'retry-after': '1' },
+          }),
+      ),
+    );
+    await expect(
+      callModel({ provider, apiKey: 'k', system: '', user: 'Hi', timeoutMs: 5000 }),
+    ).rejects.toMatchObject({ kind: 'rate_limit', retryable: true, retryAfterMs: 1000 });
+  });
+
   it('sends custom headers for OpenAI-compatible endpoints', async () => {
     let captured: Record<string, string> = {};
     vi.stubGlobal(

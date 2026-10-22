@@ -155,9 +155,27 @@ describe('mocked nudger run', () => {
       files: [],
       settings: testSettings,
     });
-    vi.stubGlobal('fetch', vi.fn(async () => openAiReply('{"reply":"unterminated')));
+    vi.stubGlobal('fetch', vi.fn(async () => openAiReply('{"facts":["one"]}')));
     await expect(runPrepared(store, prepared)).rejects.toMatchObject({ kind: 'bad_request' });
     expect(await store.listReplies(doc.id)).toHaveLength(0);
+  });
+
+  it('salvages a truncated JSON reply and marks the fact list incomplete', async () => {
+    const store = await freshStore();
+    const doc = await store.createDocument('Cover letter', 'Dear team.');
+    const nudger = await store.createNudger(newNudgerInput({ facts: true }));
+    const prepared = prepareRun({
+      nudger,
+      document: doc,
+      caret: { start: doc.currentText.length, end: doc.currentText.length },
+      files: [],
+      settings: testSettings,
+    });
+    vi.stubGlobal('fetch', vi.fn(async () => openAiReply('{"reply":"A cut-off nudge')));
+    const { reply } = await runPrepared(store, prepared);
+    expect(reply.text).toBe('A cut-off nudge');
+    expect(reply.factsError).toMatch(/cut off/i);
+    expect(await store.listReplies(doc.id)).toHaveLength(1);
   });
 
   it('keeps old resolved prompts unchanged when the reference file is edited', async () => {

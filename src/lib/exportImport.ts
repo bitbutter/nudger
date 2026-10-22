@@ -156,16 +156,28 @@ export function validateBundle(raw: unknown): ValidationResult {
       system: asString(item.system),
       prompt: asString(item.prompt, 'Draft:\n{{before_cursor}}'),
       fileIds: asStringArray(item.fileIds).filter((id) => fileIds.has(id)),
-      providerId:
-        typeof item.providerId === 'string' ? (item.providerId as Nudger['providerId']) : undefined,
-      model: typeof item.model === 'string' && item.model.trim() ? item.model.trim() : undefined,
+      // Imported nudgers always use the local provider and never start auto-running.
+      // This prevents an imported pack from redirecting the stored key to another
+      // preset host or spending silently on the next typing pause. A model tied to
+      // a dropped provider override is dropped too, so the import cannot leave a
+      // guaranteed provider error on the card.
+      providerId: undefined,
+      model:
+        typeof item.providerId !== 'string' &&
+        typeof item.model === 'string' &&
+        item.model.trim()
+          ? item.model.trim()
+          : undefined,
       temperature: Math.max(0, Math.min(2, asNumber(item.temperature, 0.4))),
       maxTokens: Math.max(1, Math.min(64_000, Math.round(asNumber(item.maxTokens, 700)))),
-      maxContextChars: Math.max(1_000, Math.round(asNumber(item.maxContextChars, 100_000))),
-      autoRun: asBoolean(item.autoRun),
+      maxContextChars: Math.max(
+        1_000,
+        Math.min(2_000_000, Math.round(asNumber(item.maxContextChars, 100_000))),
+      ),
+      autoRun: false,
       enabled: asBoolean(item.enabled, true),
       done: asBoolean(item.done),
-      budget: Math.max(0, Math.round(asNumber(item.budget, 3))),
+      budget: Math.max(0, Math.min(10_000, Math.round(asNumber(item.budget, 3)))),
       facts: asBoolean(item.facts, false),
       factsPrompt:
         typeof item.factsPrompt === 'string' && item.factsPrompt.trim()

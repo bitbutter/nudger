@@ -76,10 +76,34 @@ describe('structured reply parsing', () => {
     expect(parsed.malformedJson).toBeUndefined();
   });
 
-  it('rejects malformed JSON instead of showing it as prose', () => {
-    const parsed = parseStructuredNudge('{"reply":"unterminated');
-    expect(parsed.malformedJson).toBe(true);
-    expect(parsed.text).toBe('');
+  it('salvages a reply cut off inside the JSON string', () => {
+    const parsed = parseStructuredNudge('{"reply":"unterminated reply');
+    expect(parsed.text).toBe('unterminated reply');
+    expect(parsed.factsError).toMatch(/cut off/i);
+    expect(parsed.malformedJson).toBeUndefined();
+  });
+
+  it('reports a missing or invalid facts field without losing the reply', () => {
+    const missing = parseStructuredNudge('{"reply":"R"}');
+    expect(missing.text).toBe('R');
+    expect(missing.factsError).toMatch(/omitted/i);
+    const invalid = parseStructuredNudge('{"reply":"R","facts":null}');
+    expect(invalid.text).toBe('R');
+    expect(invalid.factsError).toMatch(/invalid/i);
+  });
+
+  it('accepts objects with a fact property', () => {
+    expect(parseStructuredNudge('{"reply":"R","facts":[{"fact":"Rust"}]}')).toEqual({
+      text: 'R',
+      facts: ['Rust'],
+    });
+  });
+
+  it('does not strip a FACTS line that is not the final line', () => {
+    const parsed = parseStructuredNudge('A reply.\nFACTS: not the last line\nMore prose.');
+    expect(parsed.text).toBe('A reply.\nFACTS: not the last line\nMore prose.');
+    expect(parsed.facts).toEqual([]);
+    expect(parsed.factsError).toMatch(/plain reply/i);
   });
 
   it('rejects a JSON object with facts but no reply', () => {
