@@ -65,11 +65,12 @@ A nudger can return a short list of concrete specifics beneath its reply: names,
 
 - **Per nudger, selectively on.** Completeness coach, Hiring manager, Skeptical reviewer and Fact checker start with fact clues on; the structural, style, continuation, research-planner and definition nudgers start with them off. Every nudger has a toggle, and custom nudgers start off. This is deliberate: a fact list is useful when the role is about specifics, and noise when it is about structure or voice.
 - **One request, one JSON object.** When fact clues are on, the model is asked to return `{"reply":"...","facts":["..."]}`. The reply and the facts come from the same reading of the same material; there is no second request and no doubled input cost.
-- **The prompt is fact-specific.** The nudger editor has an editable “What should the list focus on?” field. The fixed JSON protocol and the source-bound rules (at most five, only the supplied material, no invention, filename in parentheses when relevant, prefer exact values) are appended to the system prompt at run time. The resolved-prompt preview shows the whole thing.
+- **The facts are tied to the nudge.** The prompt requires every clue to support, sharpen or challenge the specific question or critique in the reply field. A nudge about a named project should yield that project's exact name, language/stack, release date or version when the material contains them; unrelated material is omitted. If no clue relates to the nudge, the list is empty rather than padded.
+- **The prompt is fact-specific.** The nudger editor has an editable “What should the facts relate to?” field. The fixed JSON protocol and the source-bound rules (at most five, only the supplied material, no invention, filename in parentheses when relevant, prefer exact values, most relevant first) are appended to the system prompt at run time. The resolved-prompt preview shows the whole thing.
 - **Per reply, immutable.** The reply text and facts are stored together with the resolved prompt. Older replies keep the facts from their own run. History and exports preserve them.
 - **Failure handling is explicit.** The parser tolerates code fences and surrounding prose. If the model returns plain prose instead of JSON, the prose is kept as the reply and the card says the structured fact list is missing. If the response is JSON-shaped but malformed, the run fails with a clear error and a Retry action instead of rendering the broken blob as a nudge. A malformed-JSON reply is not saved.
 - **Provider-agnostic.** This does not rely on any provider's JSON mode or tool-calling support; it is a prompt protocol validated locally, so it works through the same OpenAI-compatible and Anthropic adapters as everything else.
-- **Not verified facts.** The prompt forbids invention and asks for specifics from the material, but the model can still be wrong. The UI labels the list “model-generated; verify”. For a deeper, dedicated pass, add a Fact checker nudger with no fact-clue list; its whole reply is the research/verification work.
+- **Not verified facts.** The prompt forbids invention and asks for specifics tied to the nudge, but the model can still be wrong. The UI labels the list “behind this nudge; model-generated; verify”. For a deeper, dedicated pass, add a Fact checker nudger with no fact-clue list; its whole reply is the research/verification work.
 
 The fact protocol adds roughly 100 tokens to the system prompt. Turning it off restores a plain-text reply with no protocol and no list.
 
@@ -341,7 +342,7 @@ The API key is not part of persisted `Settings`. IndexedDB tables: `documents`, 
 
 ## Testing
 
-`npm test` runs 96 tests in 11 files:
+`npm test` runs 97 tests in 11 files:
 
 - placeholder resolution (`before_cursor`, `before_last_word`, paragraph, selection, case-insensitivity, unknown placeholders)
 - reference-file insertion, wrappers, auto-append, missing/unselected files, unreferenced warnings, oversized trim
@@ -351,7 +352,7 @@ The API key is not part of persisted `Settings`. IndexedDB tables: `documents`, 
 - a mocked end-to-end run (create document + file + nudger, resolve prompt, call model, save reply), structured reply/facts parsing, malformed JSON, plain-text fallback, retry and cancel
 - starter library (including which starters enable fact clues), export validation, hash routing, API-key storage
 
-The production app was also exercised in a real browser (Brave via Playwright) on 2026-10-22: document creation, cursor placeholders, versions and restore, reference uploads, nudger add/duplicate/reorder/disable/delete, prompt preview, a **live DeepSeek `deepseek-flash` run** including attached notes (one request, four fact clues), a facts-off plain-text run, auto-run after typing, a 401 invalid-key error state, export → clear → import, custom template create/use/delete, and a 390 px mobile layout. The browser test scripts were development-only and are not part of the app.
+The production app was also exercised in a real browser (Brave via Playwright) on 2026-10-22: document creation, cursor placeholders, versions and restore, reference uploads, nudger add/duplicate/reorder/disable/delete, prompt preview, a **live DeepSeek `deepseek-flash` run** including attached notes (one request, four fact clues tied to the nudge), a project-note run where the nudge asked about Helios and the facts returned Rust, version 2.1, the 2024-03-12 release date and the maintainer, a facts-off plain-text run, auto-run after typing, a 401 invalid-key error state, export → clear → import, custom template create/use/delete, and a 390 px mobile layout. The browser test scripts were development-only and are not part of the app.
 
 ---
 

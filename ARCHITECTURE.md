@@ -55,7 +55,7 @@ Trimming is explicit: `trimPromptMiddle` keeps the start and end of an oversized
 
 ### Fact clues
 
-Fact clues are a per-nudger option, not a document-wide feature. The system-prompt protocol is fixed; only the focus sentence is stored per nudger (`factsPrompt`). The model returns one JSON object containing both the reply and the facts, so the reply and its clues come from one reading of one request. The protocol adds roughly 100 tokens; there is no second provider call.
+Fact clues are a per-nudger option, not a document-wide feature. The system-prompt protocol is fixed; only the focus sentence is stored per nudger (`factsPrompt`). The model returns one JSON object containing both the reply and the facts, so the reply and its clues come from one reading of one request. The protocol requires every clue to relate directly to the nudge in the reply field: a named project should yield its name, stack, release date or version when the material has it, and unrelated material is omitted. The protocol adds roughly 100 tokens; there is no second provider call.
 
 The parser is deliberately layered: JSON object → fenced/prose-wrapped JSON → a reply/facts regex recovery → an old trailing `FACTS:` line fallback → plain prose as the reply with `factsError`. A response that starts like JSON and cannot be recovered fails the run rather than displaying JSON as prose. Facts are labeled model-generated and are never treated as verified. The starter library enables facts for the four fact-oriented roles; custom and style/continuation nudgers default off.
 

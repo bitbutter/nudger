@@ -100,7 +100,7 @@ function ReplyItem({ reply, compact, onStatus, onRetry }: ReplyItemProps) {
         <div className="reply-facts">
           <div className="reply-facts-head">
             <span>Facts to check</span>
-            <span className="reply-facts-note">model-generated; verify</span>
+            <span className="reply-facts-note">behind this nudge · model-generated; verify</span>
             <button type="button" className="link-btn" onClick={copyFacts}>
               Copy
             </button>

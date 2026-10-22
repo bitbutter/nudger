@@ -14,6 +14,10 @@ describe('fact protocol', () => {
     expect(instruction).toContain('up to five');
     expect(instruction).toContain('Return exactly one JSON object');
     expect(instruction).toContain('never invent');
+    expect(instruction).toContain('relate directly to the nudge');
+    expect(instruction).toContain('names a project');
+    expect(instruction).toContain('release date');
+    expect(instruction).toContain('Do not summarize the material');
   });
 
   it('falls back to the generic focus', () => {
@@ -26,6 +30,17 @@ describe('structured reply parsing', () => {
     expect(parseStructuredNudge('{"reply":"A question?","facts":["400 tickets","nine hours"]}')).toEqual({
       text: 'A question?',
       facts: ['400 tickets', 'nine hours'],
+    });
+  });
+
+  it('keeps project-specific clues tied to the nudge reply', () => {
+    expect(
+      parseStructuredNudge(
+        '{"reply":"Which Helios release should the letter cite?","facts":["Helios","Rust","2024-03-12 (notes.md)","version 2.1 (notes.md)"]}',
+      ),
+    ).toEqual({
+      text: 'Which Helios release should the letter cite?',
+      facts: ['Helios', 'Rust', '2024-03-12 (notes.md)', 'version 2.1 (notes.md)'],
     });
   });
 

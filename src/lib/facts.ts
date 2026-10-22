@@ -12,16 +12,16 @@
  */
 
 export const GENERIC_FACTS_FOCUS =
-  'Focus on concrete specifics the writer should verify or might need to look up to avoid a mistake.';
+  'List the concrete details behind the question or critique in your reply: exact names, dates, numbers, versions, language/stack or links the writer should verify. Ignore material unrelated to that nudge.';
 
 export function buildFactsInstruction(focus: string): string {
   return [
     'FACT CLUES PROTOCOL',
     `Focus: ${(focus || '').trim() || GENERIC_FACTS_FOCUS}`,
-    'Return exactly one JSON object and nothing else:',
+    'The facts are for the nudge you write in the reply field, not a general summary of the material. Return exactly one JSON object and nothing else:',
     '{"reply":"<your full reply>","facts":["clue one","clue two"]}',
     '- "reply" is the complete text you would otherwise have written to the writer. Keep your normal format, length and tone. Do not mention this JSON protocol in it. Escape line breaks as \\n.',
-    '- "facts" contains up to five concrete specifics from the supplied material (the draft and attached files): names, dates, numbers, examples or links the writer should verify or might need to look up. Use only the supplied material; never invent. Prefer exact values or short quotes. If a clue comes from a named file, include the file name in parentheses. If there are none, use [].',
+    '- "facts" contains up to five concrete specifics that relate directly to the nudge in "reply". They are the details behind that question or critique: exact names, dates, numbers, versions, language/stack, claims or links the writer should verify. If the nudge names a project, tool, paper or event, include its exact name, language/stack, release date, version, people or numbers when the material contains them. Every clue must help answer or check that nudge. Do not summarize the material and do not list unrelated facts. Use only the supplied material; never invent. Prefer exact values or short quotes. If a clue comes from a named file, include the file name in parentheses. Put the most relevant clue first. If no clue relates to the nudge, use [].',
     '- Return valid JSON with no markdown fences and no text outside the object.',
   ].join('\n');
 }

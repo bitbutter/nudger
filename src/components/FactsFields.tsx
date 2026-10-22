@@ -30,14 +30,16 @@ export function FactsFields({ enabled, focus, disabled, onChange }: FactsFieldsP
         <span>Add a “Facts to check” list under each reply</span>
       </label>
       <p className="field-note">
-        The reply and the fact list come back in one JSON response from the same request. If the
-        model ignores the format, the plain reply is kept and the fact list is marked missing. Clues
-        are model-generated; verify them against the source.
+        The reply and the fact list come back in one JSON response from the same request. The list is
+        tied to that reply: each clue should name a specific detail behind the nudge, not summarize
+        the material. If the nudge names a project, tool or paper, the clues should include its exact
+        name, stack, release date or version when the material has them. Clues are model-generated;
+        verify them against the source.
       </p>
       {enabled ? (
         <>
           <label className="field">
-            <span>What should the list focus on?</span>
+            <span>What should the facts relate to?</span>
             <textarea
               className="textarea"
               rows={3}
