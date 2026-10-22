@@ -7,7 +7,7 @@ function baseBundle(): ExportedBundle {
   const now = Date.now();
   return {
     app: 'nudger',
-    schemaVersion: 1,
+    schemaVersion: 2,
     exportedAt: now,
     documents: [{ id: 'd1', title: 'Doc', currentText: 'Text', createdAt: now, updatedAt: now }],
     versions: [
@@ -27,6 +27,7 @@ function baseBundle(): ExportedBundle {
     nudgers: [
       {
         id: 'n1',
+        documentId: 'd1',
         name: 'Coach',
         color: '#7aa2f7',
         system: 'Be brief',
@@ -68,6 +69,9 @@ function baseBundle(): ExportedBundle {
         description: '',
         system: '',
         prompt: 'Draft:\n{{before_cursor}}',
+        temperature: 0.3,
+        maxTokens: 900,
+        maxContextChars: 50_000,
         builtin: false,
         createdAt: now,
         updatedAt: now,
@@ -96,8 +100,59 @@ describe('export validation', () => {
 
   it('rejects a file from another app or an unknown version', () => {
     expect(validateBundle({ app: 'other' }).ok).toBe(false);
-    expect(validateBundle({ ...baseBundle(), schemaVersion: 2 }).ok).toBe(false);
+    expect(validateBundle({ ...baseBundle(), schemaVersion: 3 }).ok).toBe(false);
     expect(validateBundle('not json').ok).toBe(false);
+  });
+
+  it('keeps document-bound nudgers on their document and carries template settings', () => {
+    const result = validateBundle(baseBundle());
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.bundle.nudgers).toHaveLength(1);
+    expect(result.bundle.nudgers[0].documentId).toBe('d1');
+    expect(result.bundle.templates[0]).toMatchObject({
+      temperature: 0.3,
+      maxTokens: 900,
+      maxContextChars: 50_000,
+    });
+  });
+
+  it('copies global nudgers from a version 1 export into every document', () => {
+    const legacy = baseBundle();
+    legacy.schemaVersion = 1;
+    legacy.documents.push({
+      id: 'd2',
+      title: 'Second',
+      currentText: 'Other text',
+      createdAt: Date.now() + 1,
+      updatedAt: Date.now() + 1,
+    });
+    delete (legacy.nudgers[0] as { documentId?: string }).documentId;
+    legacy.replies[0].documentId = 'd2';
+
+    const result = validateBundle(legacy);
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.bundle.nudgers).toHaveLength(2);
+    const byDocument = new Map(result.bundle.nudgers.map((n) => [n.documentId, n.id]));
+    expect([...byDocument.keys()].sort()).toEqual(['d1', 'd2']);
+    expect(result.bundle.replies).toHaveLength(1);
+    expect(result.bundle.replies[0].nudgerId).toBe(byDocument.get('d2'));
+    expect(result.warnings.some((w) => w.includes('older export'))).toBe(true);
+  });
+
+  it('skips a global nudger when a version 1 export has no document', () => {
+    const legacy = baseBundle();
+    legacy.schemaVersion = 1;
+    legacy.documents = [];
+    legacy.replies = [];
+    legacy.versions = [];
+    delete (legacy.nudgers[0] as { documentId?: string }).documentId;
+    const result = validateBundle(legacy);
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.bundle.nudgers).toHaveLength(0);
+    expect(result.warnings.some((w) => w.includes('no document to attach'))).toBe(true);
   });
 
   it('drops invalid files and dangling references with warnings', () => {

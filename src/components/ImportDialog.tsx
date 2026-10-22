@@ -225,8 +225,10 @@ export function ImportDialog({
 
           <p className="field-note">
             Keys are excluded from exports. Imported nudgers always start with auto-run off and use
-            your current provider; per-nudger provider overrides are not imported. Reference files are
-            included, so keep exports private.
+            your current provider; per-nudger provider overrides are not imported. Each nudger keeps
+            the document named in the export; a version 1 export has no document ids, so its nudgers
+            are copied into every imported document. Reference files are included, so keep exports
+            private.
             {warnings.length > 0 ? ' Some items were dropped during validation; see below.' : ''}
           </p>
 

@@ -1,6 +1,6 @@
 # nudger
 
-**nudger** is a local-first, static writer's board for LLM virtual repliers. One large document, a shared library of `.txt`/`.md` reference files, and any number of named nudgers that read your draft and answer with a question, critique or next step.
+**nudger** is a local-first, static writer's board for LLM virtual repliers. Each document carries its own row of named nudgers, so their attached context belongs to that draft; a shared library of `.txt`/`.md` reference files supplies the material. Prompt templates are how a nudger travels to another document.
 
 A nudger never writes into your document. It returns plain text. You copy what helps.
 
@@ -29,11 +29,12 @@ npm test           # unit + integration tests (Vitest)
 First run:
 
 1. Click **Start a document** and write something. The editor autosaves locally.
-2. Click **+ Add nudger** and pick a starter (Skeptical reviewer, Completeness coach, Hiring manager, …). Or create a blank one.
-3. To send reference material, create or upload a `.txt`/`.md` file under **Reference files**, then attach it in the nudger editor.
+2. Click **+ Add nudger** and pick a starter (Skeptical reviewer, Completeness coach, Hiring manager, …). Or create a blank one. The nudger belongs to this document.
+3. To send reference material, create or upload a `.txt`/`.md` file under **Reference files**, then attach it in the nudger editor. The attachment is part of this document's nudger, not a global setting.
 4. Open **Settings**, choose a provider, paste a key, and use **Test connection**.
 5. Click **Run** on a card, or **Preview** to see the exact resolved prompt first. A blocked or oversized prompt opens the preview instead of sending.
 6. Save named snapshots with **Save version** (Ctrl+S); restore from **Versions**.
+7. To reuse a configured nudger in another document, open its menu and choose **Save as template**, then add it from **Prompt templates** in the other document and attach that document's files.
 
 Keyboard shortcuts: Ctrl/Cmd+Alt+N new document, Ctrl/Cmd+S save version, Ctrl/Cmd+Shift+Enter run all, Ctrl/Cmd+Enter run the focused (or first enabled) nudger, Ctrl/Cmd+B toggle the sidebar, Ctrl/Cmd+, open settings.
 
@@ -41,19 +42,19 @@ Keyboard shortcuts: Ctrl/Cmd+Alt+N new document, Ctrl/Cmd+S save version, Ctrl/C
 
 ## What a nudger is
 
-A nudger is an independent virtual replier with:
+A nudger is an independent virtual replier owned by one document, with:
 
-- id, name, optional description, accent color
+- id, `documentId`, name, optional description, accent color
 - system prompt and user prompt (resolved at run time)
-- selected reference files, in order
+- selected reference files, in order, for that document
 - optional provider/model override (the API key always comes from Settings)
 - temperature, max tokens, max context characters
 - auto-run on/off, enabled/disabled, done
-- a reply allowance (budget), order, timestamps
+- a reply allowance (budget) for that document, order, timestamps
 - an optional “Facts to check” list and the focus for that list
-- its own reply history per document
+- its own reply history
 
-Nudgers share the global reference-file library and the global API key. They do not share prompts, files, reply state or budgets. There is no cross-nudger dedupe or similarity check.
+Nudgers in the same document share only the global reference-file library and the global API key. They do not share prompts, files, reply state or budgets. There is no cross-nudger dedupe or similarity check. A nudger does not belong to any other document, so its files and auto-run stay with the draft they were set up for.
 
 Replies are plain text with preserved line breaks. They are never inserted into the editor. Each saved reply stores the exact resolved prompt that produced it, so editing a file or prompt later does not rewrite history.
 
@@ -77,8 +78,8 @@ The fact protocol adds roughly 300 tokens to the system prompt. Turning it off r
 ### Budget, done, auto-run
 
 - **Done** stops all generation for that nudger until reopened.
-- **Budget** is the reply allowance (default 3). The card counts saved replies for the **current document**; when the count reaches the budget, running stops until **More +3** adds allowance. Clearing history frees the count. There is one `budget` value per nudger, so **More +3** raises the allowance for every document.
-- **Auto-run** fires once about 1.5 s after typing stops (configurable in Settings). It never runs while the document is empty, while the nudger is done/disabled/out of budget, or while a modal is open. If the nudger is busy when the timer fires, nudger waits for it to finish and then runs the latest draft once.
+- **Budget** is the reply allowance (default 3) inside this document. The card counts saved replies for that nudger; when the count reaches the budget, running stops until **More +3** adds allowance. Clearing history frees the count. Each document has its own nudgers, so **More +3** raises the allowance only for the nudger you clicked.
+- **Auto-run** fires once about 1.5 s after typing stops (configurable in Settings). It only considers the current document's nudgers, and never runs while the document is empty, while the nudger is done/disabled/out of budget, or while a modal is open. If the nudger is busy when the timer fires, nudger waits for it to finish and then runs the latest draft once.
 - At most one request per nudger is in flight. A global queue limits concurrent calls (default 2, configurable 1–8). Over-limit jobs wait.
 - Rate-limit (429) and 5xx responses are retried automatically up to two times with backoff when the provider's wait is 15 s or less. Longer waits are surfaced with the provider's message instead of hanging the card.
 - Failed attempts are shown in the card with the provider's message and an actionable hint. They are not saved as replies and do not consume budget.
@@ -139,8 +140,8 @@ Global `.txt` and `.md` library, stored in IndexedDB.
 - Only `.txt` and `.md` are accepted. Binary content and other formats (PDF, DOCX, HTML) are rejected. Uploaded files are capped at 2 MB each.
 - Names are unique case-insensitively. Uploads that collide are saved with ` (2)`, ` (3)`, … rather than overwriting.
 - Rename, edit, search, download, delete. Editing is a plain-text textarea; the file's char count, word count, kind and updated time are shown.
-- The file list shows all files, and each nudger can attach any subset in a chosen order.
-- Deleting a file removes it from every nudger that attached it. Old replies still hold their resolved prompt.
+- The file list shows all files, and each document's nudgers can attach any subset in a chosen order. The same file can be attached by nudgers in different documents.
+- Deleting a file removes it from every nudger that attached it. Old replies still hold their resolved prompt. The delete notice names each nudger's document, because names can repeat across documents.
 
 Files are part of exports. They are never committed to the repository.
 
@@ -167,7 +168,9 @@ The starter library is read-only and ships with ten short templates:
 
 Completeness coach (attach notes), Hiring manager (attach the job posting), Skeptical reviewer, Structural editor (attach an outline/style guide if you have one), Fact checker (attach sources if you have one), Devil's advocate, Audience check, Continuation prompter, Research planner, Definition explainer.
 
-A nudger keeps its own copy of the system and user prompts. Editing one nudger never edits another. In the nudger editor you can load a template, reset to the template it came from, save the current prompt as a custom template, or duplicate the nudger as a new one. Custom templates live on **Prompt templates**, where they can be created, edited, duplicated, deleted and used as a new nudger. Starter templates cannot be edited or deleted; duplicate one to customize it.
+A nudger keeps its own copy of the system and user prompts. Editing one nudger never edits another. In the nudger editor you can load a template, reset to the template it came from, save the current prompt as a custom template, or duplicate the nudger as a new one. **Save as template** is also in each card's menu.
+
+A saved template copies the name, description, system prompt, user prompt, fact settings and generation settings verbatim, including placeholders such as `{{before_cursor}}`, `{{files}}` and `{{file:notes.md}}`. Files are not carried: they describe one document's context. Add the template in another document, attach that document's files, and the same role works there against the right material. Custom templates live on **Prompt templates**, where they can be created, edited, duplicated, deleted and used as a new nudger. Starter templates cannot be edited or deleted; duplicate one to customize it.
 
 ---
 
@@ -247,7 +250,7 @@ There is a visible privacy note in the sidebar and a fuller privacy section in S
 
 ## Export, import and storage
 
-**Export** downloads a JSON bundle (`nudger-export-YYYY-MM-DD-HHMM.json`) with schema version 1: documents, versions, reference files, nudgers, replies, custom templates and settings. API keys are excluded, and the export is written only after any pending autosave is flushed.
+**Export** downloads a JSON bundle (`nudger-export-YYYY-MM-DD-HHMM.json`) with schema version 2: documents, versions, reference files, document-bound nudgers, replies, custom templates and settings. API keys are excluded, and the export is written only after any pending autosave is flushed.
 
 **Import** validates the file and lets you choose:
 
@@ -256,7 +259,7 @@ There is a visible privacy note in the sidebar and a fuller privacy section in S
 
 Safety on replace: the exported **base URL and custom headers are ignored by default** (a hostile export must not be able to point your key at another host). Import shows the imported host and offers an explicit checkbox to restore those network settings. The local **remember key** preference is also kept, so an import cannot move your key between storage modes. Imported nudgers always start with **auto-run off** and use your current provider; per-nudger provider overrides are not imported, so a shared nudger pack cannot silently redirect the key to another preset host.
 
-Validation drops malformed items with visible warnings rather than importing partial garbage. Unsupported schema versions are rejected. Import does not validate the semantics of prompts; it does validate types, file extensions and references.
+Validation drops malformed items with visible warnings rather than importing partial garbage. Version 1 exports are still accepted: their global nudgers are copied into every document in the export, and replies are pointed at the copy for their document, which is the same migration the browser database performs. Unsupported schema versions are rejected. Import does not validate the semantics of prompts; it does validate types, file extensions and references.
 
 **Storage usage** is read from `navigator.storage.estimate()` and shown in the sidebar and Settings. The app warns at 80% and surfaces quota errors instead of silently losing a write. IndexedDB stores the whole document text, so very large documents and many reference files consume real space.
 
@@ -298,13 +301,14 @@ base-uri 'none'; form-action 'none'; object-src 'none'
 Document   { id, title, currentText, createdAt, updatedAt }
 Version    { id, documentId, text, label?, createdAt, wordCount }
 ReferenceFile { id, name, kind: "txt" | "md", content, createdAt, updatedAt, wordCount }
-Nudger     { id, name, description?, color, system, prompt, fileIds[], providerId?, model?,
+Nudger     { id, documentId, name, description?, color, system, prompt, fileIds[], providerId?, model?,
              temperature, maxTokens, maxContextChars, autoRun, enabled, done, budget,
              facts, factsPrompt, order, templateId?, createdAt, updatedAt }
 Reply      { id, documentId, nudgerId, text, resolvedPrompt, fileIds[], model, provider,
              createdAt, status: "new" | "pinned" | "dismissed" | "archived", usage?,
              facts?: string[], factsError? }
-Template   { id, name, description, system, prompt, facts?, factsPrompt?, builtin, createdAt, updatedAt }
+Template   { id, name, description, system, prompt, facts?, factsPrompt?, temperature?, maxTokens?,
+             maxContextChars?, builtin, createdAt, updatedAt }
 Settings   { providerId, model, baseUrl, customHeaders?, rememberKey, temperature, maxTokens,
              maxContextChars, autoRunDelayMs, maxConcurrentRuns, requestTimeoutMs, theme, layout }
 ```
@@ -322,9 +326,9 @@ The API key is not part of persisted `Settings`. IndexedDB tables: `documents`, 
 5. **`current_paragraph`** splits on blank lines, picks the next paragraph when the cursor is on a separator, and the previous one on a trailing blank line.
 6. **Trimming an oversized prompt drops the middle**, visibly, keeping the start (instructions/files) and end (text nearest the cursor). It is never silent and the exact result is previewed. Run anyway is always available.
 7. **Manual runs never open the prompt preview automatically** except when the run is blocked or over the limit. The resolved prompt is always available from **Preview** and from each stored reply.
-8. **Budget counts saved replies per document** because reply histories are per document, while the nudger data model has one `budget` field. **More +3** raises the nudger's allowance for all documents. Clearing a document's history resets that document's count.
+8. **Each nudger has one budget, inside its own document.** The count is the saved replies for that nudger, **More +3** raises only that nudger's allowance, and clearing its history frees the count. There is no shared allowance between documents because nudgers are not shared.
 9. **Failed runs are not saved as replies.** They appear in the card with the provider message, a Retry button and, where useful, an Open settings link. This keeps reply history meaningful and avoids failures consuming budget.
-10. **Duplicating a document copies its versions.** Duplicating a nudger keeps prompts/files/color/model but resets auto-run, done and budget, so a copy does not immediately double model calls.
+10. **Duplicating a document copies its versions and its nudger setup** (prompts, files, budget and generation settings) but not replies, and the copied nudgers start with auto-run off, so opening the duplicate does not immediately double model calls. Duplicating a nudger keeps prompts/files/color/model but resets auto-run, done and budget.
 11. **Deleting a reference file detaches it from nudgers.** Old replies keep their resolved prompts. Renaming a referenced file warns that `{{file:oldname}}` placeholders need updating.
 12. **Missing or unselected `{{file:name}}` blocks the run.** Unknown placeholders are warnings and are sent literally. A template with selected files but no file placeholder auto-appends them (as required) rather than warning.
 13. **Import replace protects the API key path.** It ignores the exported base URL and custom headers unless the user explicitly opts in; it keeps the local remember-key choice; and it never touches the key itself. Merge preserves local settings and remaps duplicate file names.
@@ -343,13 +347,15 @@ The API key is not part of persisted `Settings`. IndexedDB tables: `documents`, 
 
 ## Testing
 
-`npm test` runs 101 tests in 11 files:
+`npm test` runs 125 tests in 12 files:
 
 - placeholder resolution (`before_cursor`, `before_last_word`, paragraph, selection, case-insensitivity, unknown placeholders)
-- reference-file insertion, wrappers, auto-append, missing/unselected files, unreferenced warnings, oversized trim
+- reference-file insertion, wrappers, auto-append, missing/unselected files, unreferenced warnings, oversized trim, files dropped by trimming
 - non-destructive version restore and autosave behavior
+- document-bound nudgers: per-document listing and order, document duplication/deletion cascades, cross-document reply rejection, version 1 → 2 database migration, legacy export migration
+- nudger → template conversion (placeholders and generation settings kept, files and document left behind) and template reuse in another document
 - IndexedDB storage, CRUD, cascades, budgets, settings key stripping, export/import, merge remapping, import network safety
-- provider request shapes for OpenAI-compatible and Anthropic, URL joining, model override fallback, auth/rate-limit/context/CORS/timeout errors
+- provider request shapes for OpenAI-compatible and Anthropic, URL joining, model override fallback, reserved custom headers, loopback http, response size limits, auth/rate-limit/context/CORS/timeout errors
 - a mocked end-to-end run (create document + file + nudger, resolve prompt, call model, save reply), structured reply/facts parsing, malformed JSON, plain-text fallback, retry and cancel
 - starter library (including which starters enable fact clues), export validation, hash routing, API-key storage
 

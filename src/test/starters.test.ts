@@ -37,7 +37,7 @@ describe('starter library', () => {
 
   it('creates an independent nudger from a template', () => {
     const template = getTemplateById('starter-skeptical-reviewer')!;
-    const nudger = nudgerFromTemplate(template, { order: 2, settings: DEFAULT_SETTINGS });
+    const nudger = nudgerFromTemplate(template, { documentId: 'doc-1', order: 2, settings: DEFAULT_SETTINGS });
     expect(nudger.name).toBe('Skeptical reviewer');
     expect(nudger.templateId).toBe(template.id);
     expect(nudger.prompt).toBe(template.prompt);

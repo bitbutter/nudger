@@ -575,9 +575,10 @@ export function SettingsPage({
           <section className="panel-section">
             <h2>Where things go</h2>
             <p className="field-note">
-              Documents and replies are separate per document. Reference files are global to the
-              library. Nudgers are shared across documents; each document has its own reply history
-              and budget count for each nudger.
+              Documents, replies and nudgers are separate per document. Reference files are global
+              to the library, and prompt templates live above documents. A nudger's attached files,
+              budget and reply history stay with its document; use Save as template on a card to
+              carry its setup to another document.
             </p>
           </section>
         </aside>

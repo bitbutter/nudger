@@ -185,6 +185,8 @@ export function blankTemplate(): Template {
 }
 
 export type NewNudgerOptions = {
+  /** The document that owns the new nudger. */
+  documentId: string;
   order: number;
   settings: Pick<Settings, 'maxContextChars'>;
   fileIds?: string[];
@@ -194,15 +196,16 @@ export type NewNudgerOptions = {
 
 export function nudgerFromTemplate(template: Template, options: NewNudgerOptions): Omit<Nudger, 'id' | 'createdAt' | 'updatedAt'> {
   return {
+    documentId: options.documentId,
     name: options.name?.trim() || template.name,
     description: template.description,
     color: NUDGER_COLORS[Math.max(0, options.order) % NUDGER_COLORS.length].value,
     system: template.system,
     prompt: template.prompt,
     fileIds: options.fileIds ?? [],
-    temperature: 0.4,
-    maxTokens: 700,
-    maxContextChars: options.settings.maxContextChars,
+    temperature: template.temperature ?? 0.4,
+    maxTokens: template.maxTokens ?? 700,
+    maxContextChars: template.maxContextChars ?? options.settings.maxContextChars,
     autoRun: false,
     enabled: true,
     done: false,
@@ -211,5 +214,45 @@ export function nudgerFromTemplate(template: Template, options: NewNudgerOptions
     factsPrompt: template.factsPrompt?.trim() || GENERIC_FACTS_FOCUS,
     order: options.order,
     templateId: template.id,
+  };
+}
+
+type TemplateSource = Pick<
+  Nudger,
+  | 'name'
+  | 'description'
+  | 'system'
+  | 'prompt'
+  | 'temperature'
+  | 'maxTokens'
+  | 'maxContextChars'
+  | 'facts'
+  | 'factsPrompt'
+>;
+
+/**
+ * Turns a configured nudger into a template. Prompts are copied verbatim, so
+ * placeholders keep resolving against whichever document later uses it. Files
+ * are deliberately not carried: they belong to the document's context.
+ */
+export function templateFromNudger(
+  nudger: TemplateSource,
+  options: { id?: string; now?: number; name?: string } = {},
+): Template {
+  const now = options.now ?? Date.now();
+  return {
+    id: options.id ?? `template-${now}-${Math.random().toString(36).slice(2, 8)}`,
+    name: (options.name ?? `${nudger.name} template`).trim() || 'Untitled template',
+    description: nudger.description ?? '',
+    system: nudger.system,
+    prompt: nudger.prompt,
+    facts: nudger.facts === true,
+    factsPrompt: nudger.factsPrompt,
+    temperature: nudger.temperature,
+    maxTokens: nudger.maxTokens,
+    maxContextChars: nudger.maxContextChars,
+    builtin: false,
+    createdAt: now,
+    updatedAt: now,
   };
 }

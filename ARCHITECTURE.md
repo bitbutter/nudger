@@ -4,7 +4,7 @@
 
 nudger is a single-page static app: React 18 + TypeScript + Vite, Dexie for IndexedDB. There is no server, no API route, no proxy, and no runtime configuration from the environment. `npm run build` produces a `dist/` directory that can be hosted anywhere static. Hash routing (`#/doc/:id`, `#/files`, `#/templates`, `#/settings`) works from a GitHub Pages subpath without rewrites.
 
-The local database is the source of truth. IndexedDB (`nudger`) holds seven tables: `documents`, `versions`, `files`, `nudgers`, `replies`, `templates`, `settings`. The API key is deliberately outside the database: `sessionStorage` by default, `localStorage` when the user opts in.
+The local database is the source of truth. IndexedDB (`nudger`) holds seven tables: `documents`, `versions`, `files`, `nudgers`, `replies`, `templates`, `settings`. A nudger row carries the `documentId` of the draft it belongs to, so its prompt, files, budget and auto-run never leak into another document; templates are the cross-document artifact. Database version 2 adds that column and migrates version 1 data: each global nudger is copied into every existing document and replies are rewired to the copy for their document (`src/lib/migrate.ts`). With no documents, the configuration is preserved as custom templates instead of being dropped. The API key is deliberately outside the database: `sessionStorage` by default, `localStorage` when the user opts in.
 
 ## Module map
 
@@ -92,7 +92,7 @@ Exports are validated with `validateBundle` before import: schema version, requi
 
 ## Testing
 
-Vitest runs in Node with `fake-indexeddb`. Tests cover placeholder semantics, file insertion and auto-append, trimming, version restore, storage/CRUD/cascades, import/export safety, provider request shapes and error classification, retry/cancel, hash routing, key storage, the starter library, the fact protocol/parsing (including malformed JSON and plain-text fallback), and a mocked end-to-end run. Browser checks were performed separately with a production preview and a real DeepSeek key; those scripts are not part of the shipped app.
+Vitest runs in Node with `fake-indexeddb`. Tests cover placeholder semantics, file insertion and auto-append, trimming (including files removed by a trim), version restore, document-bound nudgers and their cascades, the version 1 → 2 database migration, nudger → template conversion and reuse, storage/CRUD/cascades, import/export safety (including version 1 bundles), provider request shapes, reserved headers, loopback http, response size limits and error classification, retry/cancel, hash routing, key storage, the starter library, the fact protocol/parsing (including malformed JSON and plain-text fallback), and a mocked end-to-end run. Browser checks were performed separately with a production preview and a real DeepSeek key; those scripts are not part of the shipped app.
 
 ## Deployment
 

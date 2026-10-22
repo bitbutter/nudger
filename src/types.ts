@@ -40,6 +40,8 @@ export type ReferenceFile = {
 
 export type Nudger = {
   id: string;
+  /** The document this nudger belongs to. Nudgers do not travel between documents. */
+  documentId: string;
   name: string;
   description?: string;
   color: string;
@@ -57,7 +59,7 @@ export type Nudger = {
   enabled: boolean;
   /** Done stops generation for this nudger until reopened. */
   done: boolean;
-  /** Reply allowance for this nudger, counted per document. "More" adds 3. */
+  /** Reply allowance inside this document. "More" adds 3. */
   budget: number;
   /** Ask for a "Facts to check" list under each reply. Off by default. */
   facts: boolean;
@@ -101,6 +103,9 @@ export type Template = {
   /** Optional defaults carried into nudgers created from this template. */
   facts?: boolean;
   factsPrompt?: string;
+  temperature?: number;
+  maxTokens?: number;
+  maxContextChars?: number;
   builtin: boolean;
   createdAt: number;
   updatedAt: number;
@@ -126,7 +131,7 @@ export type Settings = {
 
 export type ExportedBundle = {
   app: 'nudger';
-  schemaVersion: 1;
+  schemaVersion: 1 | 2;
   exportedAt: number;
   documents: Document[];
   versions: Version[];

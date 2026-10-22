@@ -37,6 +37,7 @@ export function testNudger(partial: Partial<Nudger> = {}): Nudger {
   const now = Date.now();
   return {
     id: 'nudger-1',
+    documentId: 'doc-1',
     name: 'Coach',
     description: '',
     color: '#7aa2f7',

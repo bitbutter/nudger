@@ -19,6 +19,7 @@ type NudgerBoardProps = {
   onEditNudger: (nudger: Nudger) => void;
   onPreviewNudger: (nudger: Nudger) => void;
   onDuplicateNudger: (nudger: Nudger) => void;
+  onSaveNudgerAsTemplate: (nudger: Nudger) => void;
   onDeleteNudger: (nudger: Nudger) => void;
   onMoveNudger: (nudger: Nudger, direction: -1 | 1) => void;
   onUpdateNudger: (nudger: Nudger, patch: Partial<Nudger>) => void;
@@ -41,7 +42,8 @@ export function NudgerBoard(props: NudgerBoardProps) {
             Nudgers <span className="count">{nudgers.length}</span>
           </h2>
           <p className="section-sub">
-            Independent virtual repliers. Each has its own prompt, files, budget and history.
+            Independent virtual repliers for this document. Each has its own prompt, files, budget
+            and history; save one as a template to reuse it in another document.
           </p>
         </div>
         <div className="section-actions">
@@ -101,11 +103,6 @@ export function NudgerBoard(props: NudgerBoardProps) {
           {nudgers.map((nudger, index) => {
             const rawState = props.runStates[nudger.id];
             const state = rawState?.documentId === props.documentId ? rawState : undefined;
-            const busyElsewhere = Boolean(
-              rawState &&
-                rawState.documentId !== props.documentId &&
-                rawState.phase !== 'error',
-            );
             return (
             <NudgerCard
               key={nudger.id}
@@ -115,7 +112,6 @@ export function NudgerBoard(props: NudgerBoardProps) {
               fileCount={nudger.fileIds.length}
               replies={props.replies.filter((reply) => reply.nudgerId === nudger.id)}
               state={state}
-              busyElsewhere={busyElsewhere}
               focused={props.focusedNudgerId === nudger.id}
               hasKey={props.hasKey}
               onFocus={() => props.onFocusNudger(nudger.id)}
@@ -124,6 +120,7 @@ export function NudgerBoard(props: NudgerBoardProps) {
               onPreview={() => props.onPreviewNudger(nudger)}
               onEdit={() => props.onEditNudger(nudger)}
               onDuplicate={() => props.onDuplicateNudger(nudger)}
+              onSaveAsTemplate={() => props.onSaveNudgerAsTemplate(nudger)}
               onDelete={() => props.onDeleteNudger(nudger)}
               onMove={(direction) => props.onMoveNudger(nudger, direction)}
               onUpdate={(patch) => props.onUpdateNudger(nudger, patch)}

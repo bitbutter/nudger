@@ -13,6 +13,7 @@ import { normalizeSettings, stripApiKey, type StoredSettings } from './defaults'
 import { NudgeError } from './errors';
 import { clamp, formatDateTime, newId, wordCount } from './util';
 import { validateFileName } from './referenceFiles';
+import { SCHEMA_VERSION } from './exportImport';
 import { STARTER_TEMPLATES } from './starters';
 import { getProviderPreset } from './providers';
 
@@ -120,7 +121,7 @@ export function createStore(database: NudgerDB = db) {
   }
 
   async function duplicateDocument(id: string): Promise<Document | null> {
-    return database.transaction('rw', documents, versions, async () => {
+    return database.transaction('rw', documents, versions, nudgers, async () => {
       const source = await documents.get(id);
       if (!source) return null;
       const now = Date.now();
@@ -141,14 +142,29 @@ export function createStore(database: NudgerDB = db) {
           createdAt: version.createdAt,
         });
       }
+      // The copy gets the same nudger setup (prompts, files, budget), but no
+      // reply history and no auto-run, matching how duplicating a nudger works.
+      const sourceNudgers = await nudgers.where('documentId').equals(id).toArray();
+      for (const nudger of sourceNudgers) {
+        await nudgers.add({
+          ...nudger,
+          id: newId(),
+          documentId: copy.id,
+          autoRun: false,
+          done: false,
+          createdAt: now,
+          updatedAt: now,
+        });
+      }
       return copy;
     });
   }
 
   async function deleteDocument(id: string): Promise<void> {
-    await database.transaction('rw', documents, versions, replies, async () => {
+    await database.transaction('rw', documents, versions, nudgers, replies, async () => {
       await documents.delete(id);
       await versions.where('documentId').equals(id).delete();
+      await nudgers.where('documentId').equals(id).delete();
       await replies.where('documentId').equals(id).delete();
     });
   }
@@ -296,8 +312,11 @@ export function createStore(database: NudgerDB = db) {
 
   // ----------------------------------------------------------------- nudgers
 
-  async function listNudgers(): Promise<Nudger[]> {
-    const rows = await nudgers.toArray();
+  /** All nudgers, or only the ones owned by one document. */
+  async function listNudgers(documentId?: string): Promise<Nudger[]> {
+    const rows = documentId
+      ? await nudgers.where('documentId').equals(documentId).toArray()
+      : await nudgers.toArray();
     return rows.sort((a, b) => a.order - b.order || a.createdAt - b.createdAt);
   }
 
@@ -306,8 +325,10 @@ export function createStore(database: NudgerDB = db) {
   }
 
   async function createNudger(input: NewNudger): Promise<Nudger> {
-    const order =
-      input.order ?? (await nudgers.toArray()).reduce((max, n) => Math.max(max, n.order), -1) + 1;
+    const doc = await documents.get(input.documentId);
+    if (!doc) throw new Error('The document for this nudger no longer exists.');
+    const siblings = await nudgers.where('documentId').equals(input.documentId).toArray();
+    const order = input.order ?? siblings.reduce((max, n) => Math.max(max, n.order), -1) + 1;
     const now = Date.now();
     const nudger: Nudger = {
       ...input,
@@ -338,8 +359,8 @@ export function createStore(database: NudgerDB = db) {
   async function duplicateNudger(id: string): Promise<Nudger | null> {
     const source = await nudgers.get(id);
     if (!source) return null;
-    const all = await nudgers.toArray();
-    const order = all.reduce((max, n) => Math.max(max, n.order), -1) + 1;
+    const siblings = await nudgers.where('documentId').equals(source.documentId).toArray();
+    const order = siblings.reduce((max, n) => Math.max(max, n.order), -1) + 1;
     const now = Date.now();
     const copy: Nudger = {
       ...source,
@@ -365,9 +386,11 @@ export function createStore(database: NudgerDB = db) {
 
   async function moveNudger(id: string, direction: -1 | 1): Promise<void> {
     await database.transaction('rw', nudgers, async () => {
-      const ordered = (await nudgers.toArray()).sort(
-        (a, b) => a.order - b.order || a.createdAt - b.createdAt,
-      );
+      const current = await nudgers.get(id);
+      if (!current) return;
+      const ordered = (
+        await nudgers.where('documentId').equals(current.documentId).toArray()
+      ).sort((a, b) => a.order - b.order || a.createdAt - b.createdAt);
       const index = ordered.findIndex((n) => n.id === id);
       const target = index + direction;
       if (index < 0 || target < 0 || target >= ordered.length) return;
@@ -405,6 +428,9 @@ export function createStore(database: NudgerDB = db) {
       }
       if (!nudger) {
         throw new Error('The nudger was deleted before the reply arrived, so the reply was not saved.');
+      }
+      if (nudger.documentId !== input.documentId) {
+        throw new Error('That nudger belongs to a different document, so the reply was not saved.');
       }
       const reply: Reply = {
         ...input,
@@ -485,7 +511,7 @@ export function createStore(database: NudgerDB = db) {
     ]);
     return {
       app: 'nudger',
-      schemaVersion: 1,
+      schemaVersion: SCHEMA_VERSION,
       exportedAt: Date.now(),
       documents: docs,
       versions: vers,
@@ -573,6 +599,7 @@ export function createStore(database: NudgerDB = db) {
 
         for (const nudger of bundle.nudgers) {
           if (nudgerIds.has(nudger.id)) continue;
+          if (!docIds.has(nudger.documentId)) continue;
           await nudgers.add({
             ...nudger,
             fileIds: nudger.fileIds

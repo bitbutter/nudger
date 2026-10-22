@@ -45,7 +45,7 @@ describe('mocked nudger run', () => {
     const doc = await store.createDocument('Cover letter', 'Dear team, I built a thing.');
     const notes = await store.createFile('notes.md', 'FACT: the thing served 1.2 million requests.');
     const nudger = await store.createNudger(
-      newNudgerInput({
+      newNudgerInput({ documentId: doc.id,
         name: 'Completeness coach',
         fileIds: [notes.id],
         prompt: 'Reference notes:\n{{files}}\n\nDraft:\n{{before_cursor}}',
@@ -85,7 +85,7 @@ describe('mocked nudger run', () => {
     const doc = await store.createDocument('Cover letter', 'Dear team, I built a thing.');
     const notes = await store.createFile('notes.md', 'FACT: the thing served 1.2 million requests.');
     const nudger = await store.createNudger(
-      newNudgerInput({
+      newNudgerInput({ documentId: doc.id,
         facts: true,
         factsPrompt: 'Focus on numbers in the notes.',
         fileIds: [notes.id],
@@ -126,7 +126,7 @@ describe('mocked nudger run', () => {
   it('keeps a plain-text reply but marks its fact list missing', async () => {
     const store = await freshStore();
     const doc = await store.createDocument('Cover letter', 'Dear team.');
-    const nudger = await store.createNudger(newNudgerInput({ facts: true }));
+    const nudger = await store.createNudger(newNudgerInput({ documentId: doc.id, facts: true }));
     const prepared = prepareRun({
       nudger,
       document: doc,
@@ -147,7 +147,7 @@ describe('mocked nudger run', () => {
   it('rejects malformed JSON without saving a broken reply', async () => {
     const store = await freshStore();
     const doc = await store.createDocument('Cover letter', 'Dear team.');
-    const nudger = await store.createNudger(newNudgerInput({ facts: true }));
+    const nudger = await store.createNudger(newNudgerInput({ documentId: doc.id, facts: true }));
     const prepared = prepareRun({
       nudger,
       document: doc,
@@ -163,7 +163,7 @@ describe('mocked nudger run', () => {
   it('salvages a truncated JSON reply and marks the fact list incomplete', async () => {
     const store = await freshStore();
     const doc = await store.createDocument('Cover letter', 'Dear team.');
-    const nudger = await store.createNudger(newNudgerInput({ facts: true }));
+    const nudger = await store.createNudger(newNudgerInput({ documentId: doc.id, facts: true }));
     const prepared = prepareRun({
       nudger,
       document: doc,
@@ -183,7 +183,7 @@ describe('mocked nudger run', () => {
     const doc = await store.createDocument('Essay', 'Draft text.');
     const notes = await store.createFile('notes.md', 'OLD FACT');
     const nudger = await store.createNudger(
-      newNudgerInput({ fileIds: [notes.id], prompt: 'Notes:\n{{files}}\n\nDraft:\n{{before_cursor}}' }),
+      newNudgerInput({ documentId: doc.id, fileIds: [notes.id], prompt: 'Notes:\n{{files}}\n\nDraft:\n{{before_cursor}}' }),
     );
     let call = 0;
     vi.stubGlobal(
@@ -228,7 +228,7 @@ describe('mocked nudger run', () => {
   it('retries a rate-limited request with backoff', async () => {
     const store = await freshStore();
     const doc = await store.createDocument('Doc', 'Text');
-    const nudger = await store.createNudger(newNudgerInput());
+    const nudger = await store.createNudger(newNudgerInput({ documentId: doc.id }));
     const prepared = prepareRun({
       nudger,
       document: doc,
@@ -270,7 +270,7 @@ describe('mocked nudger run', () => {
   it('can be cancelled without saving a reply', async () => {
     const store = await freshStore();
     const doc = await store.createDocument('Doc', 'Text');
-    const nudger = await store.createNudger(newNudgerInput());
+    const nudger = await store.createNudger(newNudgerInput({ documentId: doc.id }));
     const prepared = prepareRun({
       nudger,
       document: doc,

@@ -26,37 +26,40 @@ describe('document storage', () => {
     await store.renameDocument(doc.id, '   ');
     expect((await store.getDocument(doc.id))?.title).toBe('Untitled document');
     await store.createVersion(doc.id);
-    const nudger = await store.createNudger(newNudgerInput());
+    const nudger = await store.createNudger(newNudgerInput({ documentId: doc.id }));
     await store.addReply(testReplyInput(doc.id, nudger.id));
     await store.deleteDocument(doc.id);
     expect(await store.getDocument(doc.id)).toBeUndefined();
     expect(await store.listVersions(doc.id)).toHaveLength(0);
     expect(await store.listReplies(doc.id)).toHaveLength(0);
+    expect(await store.getNudger(nudger.id)).toBeUndefined();
   });
 });
 
 describe('nudger storage', () => {
   it('creates, reorders, duplicates and deletes nudgers', async () => {
     const store = await freshStore();
-    const a = await store.createNudger(newNudgerInput({ name: 'A' }));
-    const b = await store.createNudger(newNudgerInput({ name: 'B' }));
-    const c = await store.createNudger(newNudgerInput({ name: 'C' }));
+    const doc = await store.createDocument('Doc', 'Text');
+    const a = await store.createNudger(newNudgerInput({ documentId: doc.id, name: 'A' }));
+    const b = await store.createNudger(newNudgerInput({ documentId: doc.id, name: 'B' }));
+    const c = await store.createNudger(newNudgerInput({ documentId: doc.id, name: 'C' }));
     expect([a.order, b.order, c.order]).toEqual([0, 1, 2]);
-    expect((await store.listNudgers()).map((n) => n.name)).toEqual(['A', 'B', 'C']);
+    expect((await store.listNudgers(doc.id)).map((n) => n.name)).toEqual(['A', 'B', 'C']);
 
     await store.moveNudger(c.id, -1);
-    expect((await store.listNudgers()).map((n) => n.name)).toEqual(['A', 'C', 'B']);
+    expect((await store.listNudgers(doc.id)).map((n) => n.name)).toEqual(['A', 'C', 'B']);
     await store.moveNudger(a.id, -1);
-    expect((await store.listNudgers()).map((n) => n.name)).toEqual(['A', 'C', 'B']);
+    expect((await store.listNudgers(doc.id)).map((n) => n.name)).toEqual(['A', 'C', 'B']);
 
     const copy = await store.duplicateNudger(a.id);
     expect(copy?.name).toBe('A (copy)');
     expect(copy?.autoRun).toBe(false);
+    expect(copy?.documentId).toBe(doc.id);
+    expect(copy?.order).toBe(3);
 
     await store.addBudget(a.id, 3);
     expect((await store.getNudger(a.id))?.budget).toBe(6);
 
-    const doc = await store.createDocument('Doc', 'Text');
     await store.addReply(testReplyInput(doc.id, a.id));
     await store.deleteNudger(a.id);
     expect(await store.getNudger(a.id)).toBeUndefined();
@@ -65,7 +68,8 @@ describe('nudger storage', () => {
 
   it('clamps provider parameters when they are updated', async () => {
     const store = await freshStore();
-    const nudger = await store.createNudger(newNudgerInput());
+    const doc = await store.createDocument('Doc', 'Text');
+    const nudger = await store.createNudger(newNudgerInput({ documentId: doc.id }));
     await store.updateNudger(nudger.id, { temperature: 9, maxTokens: 0, maxContextChars: 10 });
     const updated = await store.getNudger(nudger.id);
     expect(updated?.temperature).toBe(2);
@@ -75,9 +79,12 @@ describe('nudger storage', () => {
 
   it('removes a deleted file from every nudger that attached it', async () => {
     const store = await freshStore();
+    const doc = await store.createDocument('Doc', 'Text');
     const notes = await store.createFile('notes.md', 'facts');
     const other = await store.createFile('other.txt', 'other');
-    const nudger = await store.createNudger(newNudgerInput({ fileIds: [notes.id, other.id] }));
+    const nudger = await store.createNudger(
+      newNudgerInput({ documentId: doc.id, fileIds: [notes.id, other.id] }),
+    );
     const affected = await store.deleteFile(notes.id);
     expect(affected).toEqual([nudger.name]);
     const updated = await store.getNudger(nudger.id);
@@ -109,11 +116,17 @@ describe('replies', () => {
     const store = await freshStore();
     const doc = await store.createDocument('Doc', 'Text');
     const otherDoc = await store.createDocument('Other', 'Text');
-    const n1 = await store.createNudger(newNudgerInput({ name: 'One' }));
-    const n2 = await store.createNudger(newNudgerInput({ name: 'Two' }));
+    const n1 = await store.createNudger(newNudgerInput({ documentId: doc.id, name: 'One' }));
+    const n2 = await store.createNudger(newNudgerInput({ documentId: doc.id, name: 'Two' }));
+    const other = await store.createNudger(
+      newNudgerInput({ documentId: otherDoc.id, name: 'Other' }),
+    );
     const reply = await store.addReply(testReplyInput(doc.id, n1.id));
     await store.addReply(testReplyInput(doc.id, n2.id));
-    await store.addReply(testReplyInput(otherDoc.id, n1.id));
+    await store.addReply(testReplyInput(otherDoc.id, other.id));
+    await expect(store.addReply(testReplyInput(otherDoc.id, n1.id))).rejects.toThrow(
+      /different document/i,
+    );
     expect(reply.status).toBe('new');
     await store.setReplyStatus(reply.id, 'pinned');
     expect((await store.listReplies(doc.id)).find((r) => r.id === reply.id)?.status).toBe('pinned');
@@ -167,6 +180,7 @@ describe('export and import', () => {
     const file = await store.createFile('notes.md', 'attached fact');
     const nudger = await store.createNudger(
       newNudgerInput({
+        documentId: doc.id,
         fileIds: [file.id],
         facts: true,
         factsPrompt: 'Focus on the attached notes.',
@@ -236,6 +250,7 @@ describe('export and import', () => {
 
   it('remaps an imported file id to an existing file with the same name', async () => {
     const store = await freshStore();
+    const doc = await store.createDocument('Imported target', 'Text');
     const existing = await store.createFile('notes.md', 'local facts');
     const bundle = await store.exportAll();
     bundle.files = [
@@ -252,6 +267,7 @@ describe('export and import', () => {
     bundle.nudgers = [
       {
         id: 'imported-nudger',
+        documentId: doc.id,
         name: 'Imported coach',
         color: '#7aa2f7',
         system: '',
@@ -274,7 +290,7 @@ describe('export and import', () => {
     const summary = await store.importBundle(bundle, 'merge');
     expect(summary.files).toBe(0);
     expect(summary.nudgers).toBe(1);
-    const imported = (await store.listNudgers()).find((n) => n.id === 'imported-nudger');
+    const imported = (await store.listNudgers(doc.id)).find((n) => n.id === 'imported-nudger');
     expect(imported?.fileIds).toEqual([existing.id]);
     expect((await store.getFile(existing.id))?.content).toBe('local facts');
   });

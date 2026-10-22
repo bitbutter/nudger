@@ -489,7 +489,7 @@ export function NudgerEditor({
               />
             </label>
             <label className="field">
-              <span>Reply budget</span>
+              <span>Reply budget for this document</span>
               <input
                 className="input"
                 type="number"

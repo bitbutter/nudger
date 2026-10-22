@@ -11,8 +11,12 @@ import type {
 } from '../types';
 import { normalizeSettings } from './defaults';
 import { validateFileName } from './referenceFiles';
-import { wordCount } from './util';
+import { newId, wordCount } from './util';
 import { GENERIC_FACTS_FOCUS } from './facts';
+
+
+/** 2 adds documentId to nudgers. Version 1 exports are still accepted. */
+export const SCHEMA_VERSION = 2;
 
 export type ValidationResult =
   | { ok: true; bundle: ExportedBundle; warnings: string[] }
@@ -48,8 +52,10 @@ export function validateBundle(raw: unknown): ValidationResult {
   if (raw.app !== 'nudger') {
     errors.push('This does not look like a nudger export (missing "app": "nudger").');
   }
-  if (raw.schemaVersion !== 1) {
-    errors.push(`Unsupported export version: ${String(raw.schemaVersion)}. This build reads version 1 exports.`);
+  if (raw.schemaVersion !== 1 && raw.schemaVersion !== SCHEMA_VERSION) {
+    errors.push(
+      `Unsupported export version: ${String(raw.schemaVersion)}. This build reads version 1 and ${SCHEMA_VERSION} exports.`,
+    );
   }
   if (errors.length) return { ok: false, errors };
 
@@ -141,53 +147,81 @@ export function validateBundle(raw: unknown): ValidationResult {
 
   const nudgers: Nudger[] = [];
   const nudgerIds = new Set<string>();
+  // Exports before schema 2 stored nudgers globally. Each such nudger is copied
+  // into every document and replies are pointed at the copy for their document,
+  // mirroring the in-place database migration.
+  const legacyCopies = new Map<string, Map<string, string>>();
+  const fallbackDocuments = [...documents].sort((a, b) => a.createdAt - b.createdAt);
   for (const item of rawNudgers) {
     if (!isObject(item) || typeof item.id !== 'string' || typeof item.name !== 'string') {
       warnings.push('Skipped a nudger without an id or name.');
       continue;
     }
     if (nudgerIds.has(item.id)) continue;
-    nudgerIds.add(item.id);
-    nudgers.push({
-      id: item.id,
-      name: item.name.trim() || 'Untitled nudger',
-      description: typeof item.description === 'string' ? item.description : undefined,
-      color: typeof item.color === 'string' && /^#[0-9a-f]{3,8}$/i.test(item.color) ? item.color : '#7aa2f7',
-      system: asString(item.system),
-      prompt: asString(item.prompt, 'Draft:\n{{before_cursor}}'),
-      fileIds: asStringArray(item.fileIds).filter((id) => fileIds.has(id)),
-      // Imported nudgers always use the local provider and never start auto-running.
-      // This prevents an imported pack from redirecting the stored key to another
-      // preset host or spending silently on the next typing pause. A model tied to
-      // a dropped provider override is dropped too, so the import cannot leave a
-      // guaranteed provider error on the card.
-      providerId: undefined,
-      model:
-        typeof item.providerId !== 'string' &&
-        typeof item.model === 'string' &&
-        item.model.trim()
-          ? item.model.trim()
-          : undefined,
-      temperature: Math.max(0, Math.min(2, asNumber(item.temperature, 0.4))),
-      maxTokens: Math.max(1, Math.min(64_000, Math.round(asNumber(item.maxTokens, 700)))),
-      maxContextChars: Math.max(
-        1_000,
-        Math.min(2_000_000, Math.round(asNumber(item.maxContextChars, 100_000))),
-      ),
-      autoRun: false,
-      enabled: asBoolean(item.enabled, true),
-      done: asBoolean(item.done),
-      budget: Math.max(0, Math.min(10_000, Math.round(asNumber(item.budget, 3)))),
-      facts: asBoolean(item.facts, false),
-      factsPrompt:
-        typeof item.factsPrompt === 'string' && item.factsPrompt.trim()
-          ? item.factsPrompt.trim()
-          : GENERIC_FACTS_FOCUS,
-      order: asNumber(item.order, nudgers.length),
-      templateId: typeof item.templateId === 'string' ? item.templateId : undefined,
-      createdAt: asNumber(item.createdAt, Date.now()),
-      updatedAt: asNumber(item.updatedAt, asNumber(item.createdAt, Date.now())),
-    });
+    const name = item.name.trim() || 'Untitled nudger';
+    const rawDocumentId =
+      typeof item.documentId === 'string' && documentIds.has(item.documentId)
+        ? item.documentId
+        : undefined;
+    const copyIds = new Map<string, string>();
+    if (!rawDocumentId) {
+      if (!fallbackDocuments.length) {
+        warnings.push(`Skipped nudger "${name}" because the export has no document to attach it to.`);
+        continue;
+      }
+      legacyCopies.set(item.id, copyIds);
+      for (const doc of fallbackDocuments) copyIds.set(doc.id, newId());
+      warnings.push(
+        `Nudger "${name}" came from an older export without a document, so it was copied into ${fallbackDocuments.length} document${fallbackDocuments.length === 1 ? '' : 's'}.`,
+      );
+    } else {
+      copyIds.set(rawDocumentId, item.id);
+    }
+    for (const [documentId, nudgerId] of copyIds) {
+      nudgerIds.add(nudgerId);
+      nudgers.push({
+        id: nudgerId,
+        documentId,
+        name,
+        description: typeof item.description === 'string' ? item.description : undefined,
+        color:
+          typeof item.color === 'string' && /^#[0-9a-f]{3,8}$/i.test(item.color) ? item.color : '#7aa2f7',
+        system: asString(item.system),
+        prompt: asString(item.prompt, 'Draft:\n{{before_cursor}}'),
+        fileIds: asStringArray(item.fileIds).filter((id) => fileIds.has(id)),
+        // Imported nudgers always use the local provider and never start auto-running.
+        // This prevents an imported pack from redirecting the stored key to another
+        // preset host or spending silently on the next typing pause. A model tied to
+        // a dropped provider override is dropped too, so the import cannot leave a
+        // guaranteed provider error on the card.
+        providerId: undefined,
+        model:
+          typeof item.providerId !== 'string' &&
+          typeof item.model === 'string' &&
+          item.model.trim()
+            ? item.model.trim()
+            : undefined,
+        temperature: Math.max(0, Math.min(2, asNumber(item.temperature, 0.4))),
+        maxTokens: Math.max(1, Math.min(64_000, Math.round(asNumber(item.maxTokens, 700)))),
+        maxContextChars: Math.max(
+          1_000,
+          Math.min(2_000_000, Math.round(asNumber(item.maxContextChars, 100_000))),
+        ),
+        autoRun: false,
+        enabled: asBoolean(item.enabled, true),
+        done: asBoolean(item.done),
+        budget: Math.max(0, Math.min(10_000, Math.round(asNumber(item.budget, 3)))),
+        facts: asBoolean(item.facts, false),
+        factsPrompt:
+          typeof item.factsPrompt === 'string' && item.factsPrompt.trim()
+            ? item.factsPrompt.trim()
+            : GENERIC_FACTS_FOCUS,
+        order: asNumber(item.order, nudgers.length),
+        templateId: typeof item.templateId === 'string' ? item.templateId : undefined,
+        createdAt: asNumber(item.createdAt, Date.now()),
+        updatedAt: asNumber(item.updatedAt, asNumber(item.createdAt, Date.now())),
+      });
+    }
   }
 
   const replies: Reply[] = [];
@@ -204,8 +238,17 @@ export function validateBundle(raw: unknown): ValidationResult {
       continue;
     }
     if (replyIds.has(item.id)) continue;
-    if (!documentIds.has(item.documentId) || !nudgerIds.has(item.nudgerId)) {
+    const legacyTarget = legacyCopies.get(item.nudgerId)?.get(item.documentId);
+    if (
+      !documentIds.has(item.documentId) ||
+      (!nudgerIds.has(item.nudgerId) && !legacyTarget)
+    ) {
       warnings.push('Skipped a reply whose document or nudger is not in the export.');
+      continue;
+    }
+    const nudgerId = legacyTarget ?? item.nudgerId;
+    if (!nudgerIds.has(nudgerId)) {
+      warnings.push('Skipped a reply whose nudger is not in the export.');
       continue;
     }
     replyIds.add(item.id);
@@ -215,7 +258,7 @@ export function validateBundle(raw: unknown): ValidationResult {
     replies.push({
       id: item.id,
       documentId: item.documentId,
-      nudgerId: item.nudgerId,
+      nudgerId,
       text: item.text,
       resolvedPrompt: asString(item.resolvedPrompt),
       fileIds: asStringArray(item.fileIds),
@@ -259,6 +302,18 @@ export function validateBundle(raw: unknown): ValidationResult {
       prompt: item.prompt,
       facts: asBoolean(item.facts, false),
       factsPrompt: typeof item.factsPrompt === 'string' ? item.factsPrompt : undefined,
+      temperature:
+        typeof item.temperature === 'number'
+          ? Math.max(0, Math.min(2, item.temperature))
+          : undefined,
+      maxTokens:
+        typeof item.maxTokens === 'number'
+          ? Math.max(1, Math.min(64_000, Math.round(item.maxTokens)))
+          : undefined,
+      maxContextChars:
+        typeof item.maxContextChars === 'number'
+          ? Math.max(1_000, Math.min(2_000_000, Math.round(item.maxContextChars)))
+          : undefined,
       builtin: false,
       createdAt: asNumber(item.createdAt, Date.now()),
       updatedAt: asNumber(item.updatedAt, asNumber(item.createdAt, Date.now())),
@@ -274,7 +329,7 @@ export function validateBundle(raw: unknown): ValidationResult {
     warnings,
     bundle: {
       app: 'nudger',
-      schemaVersion: 1,
+      schemaVersion: SCHEMA_VERSION,
       exportedAt: asNumber(raw.exportedAt, Date.now()),
       documents,
       versions,

@@ -48,14 +48,15 @@ function TemplateEditor({
   const preview = useMemo(() => {
     const tempNudger = {
       id: 'template-preview',
+      documentId: 'template-preview',
       name: draft.name || 'Template',
       color: '#7aa2f7',
       system: draft.system,
       prompt: draft.prompt,
       fileIds: [],
-      temperature: settings.temperature,
-      maxTokens: settings.maxTokens,
-      maxContextChars: settings.maxContextChars,
+      temperature: draft.temperature ?? settings.temperature,
+      maxTokens: draft.maxTokens ?? settings.maxTokens,
+      maxContextChars: draft.maxContextChars ?? settings.maxContextChars,
       autoRun: false,
       enabled: true,
       done: false,
@@ -180,6 +181,67 @@ function TemplateEditor({
             disabled={readOnly}
             onChange={(patch) => setDraft({ ...draft, ...patch })}
           />
+
+          <div className="field-row">
+            <label className="field">
+              <span>Temperature</span>
+              <input
+                className="input"
+                type="number"
+                min={0}
+                max={2}
+                step={0.1}
+                value={draft.temperature ?? settings.temperature}
+                disabled={readOnly}
+                onChange={(event) =>
+                  setDraft({
+                    ...draft,
+                    temperature: Number.isFinite(event.target.valueAsNumber)
+                      ? event.target.valueAsNumber
+                      : 0.4,
+                  })
+                }
+              />
+            </label>
+            <label className="field">
+              <span>Max tokens</span>
+              <input
+                className="input"
+                type="number"
+                min={1}
+                max={64000}
+                value={draft.maxTokens ?? settings.maxTokens}
+                disabled={readOnly}
+                onChange={(event) =>
+                  setDraft({
+                    ...draft,
+                    maxTokens: Number.isFinite(event.target.valueAsNumber)
+                      ? event.target.valueAsNumber
+                      : 700,
+                  })
+                }
+              />
+            </label>
+            <label className="field grow">
+              <span>Max context characters</span>
+              <input
+                className="input"
+                type="number"
+                min={1000}
+                step={1000}
+                value={draft.maxContextChars ?? settings.maxContextChars}
+                disabled={readOnly}
+                onChange={(event) =>
+                  setDraft({
+                    ...draft,
+                    maxContextChars: Number.isFinite(event.target.valueAsNumber)
+                      ? event.target.valueAsNumber
+                      : 100000,
+                  })
+                }
+              />
+            </label>
+          </div>
 
           <details className="placeholder-help" open>
             <summary>Available placeholders</summary>

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import type { Nudger, ReferenceFile, Template } from '../types';
+import type { Document, Nudger, ReferenceFile, Template } from '../types';
 import { store } from '../lib/storage';
 import { downloadText, formatChars, formatRelative, wordCount } from '../lib/util';
 import { looksBinary, uniqueFileName, validateFileName } from '../lib/referenceFiles';
@@ -9,13 +9,14 @@ import { useToast } from './Toast';
 type FilesPageProps = {
   files: ReferenceFile[];
   nudgers: Nudger[];
+  documents: Document[];
   templates: Template[];
   onToggleSidebar: () => void;
 };
 
 const MAX_FILE_BYTES = 2 * 1024 * 1024;
 
-export function FilesPage({ files, nudgers, templates, onToggleSidebar }: FilesPageProps) {
+export function FilesPage({ files, nudgers, documents, templates, onToggleSidebar }: FilesPageProps) {
   const { notify } = useToast();
   const [query, setQuery] = useState('');
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -226,7 +227,12 @@ ${template.prompt}`.toLowerCase().includes(token),
   };
 
   const referencedBy = selected
-    ? nudgers.filter((nudger) => nudger.fileIds.includes(selected.id)).map((nudger) => nudger.name)
+    ? nudgers
+        .filter((nudger) => nudger.fileIds.includes(selected.id))
+        .map((nudger) => {
+          const doc = documents.find((item) => item.id === nudger.documentId);
+          return doc ? `${nudger.name} (${doc.title})` : nudger.name;
+        })
     : [];
 
   return (

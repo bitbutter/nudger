@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
 import type {
   Caret,
@@ -24,8 +24,8 @@ import { executeRun, prepareRun } from './lib/run';
 import { RunManager, type RunState } from './lib/runManager';
 import { effectiveCustomHeaders, getProviderPreset } from './lib/providers';
 import { clearApiKey, loadApiKey, saveApiKey } from './lib/keyStore';
-import { blankTemplate, nudgerFromTemplate } from './lib/starters';
-import { downloadText, newId } from './lib/util';
+import { blankTemplate, nudgerFromTemplate, templateFromNudger } from './lib/starters';
+import { downloadText } from './lib/util';
 import { exportFileName } from './lib/exportImport';
 import { Sidebar } from './components/Sidebar';
 import { DocumentView } from './components/DocumentView';
@@ -112,8 +112,14 @@ export default function App() {
   caretRef.current = caret;
   const apiKeyRef = useRef(apiKey);
   apiKeyRef.current = apiKey;
+  const scopedNudgers = useMemo(
+    () => (nudgers ?? []).filter((nudger) => nudger.documentId === activeId),
+    [nudgers, activeId],
+  );
   const nudgersRef = useRef<Nudger[]>([]);
-  nudgersRef.current = nudgers ?? [];
+  // Auto-run, Run all, ordering and the board only ever see this document's
+  // nudgers. The unscoped list is kept for the Files page and exports.
+  nudgersRef.current = scopedNudgers;
   const filesRef = useRef<ReferenceFile[]>([]);
   filesRef.current = files ?? [];
   const repliesRef = useRef<Reply[]>([]);
@@ -559,10 +565,19 @@ export default function App() {
   const editNudger = (nudger: Nudger) => setEditor({ mode: 'edit', initial: { ...nudger } });
 
   const startFromTemplate = (template: Template, blank = false) => {
-    if (!settingsRef.current) return;
+    const current = activeDocRef.current;
+    // Templates live above documents, so a template used from the Templates page
+    // lands on the most recent document; the editor opens over that document.
+    const doc = current ?? (documents ?? [])[0] ?? null;
+    if (!settingsRef.current || !doc) {
+      notify('Create a document first, then add a nudger from this template.', 'warn');
+      return;
+    }
+    if (!current) navigate({ name: 'doc', id: doc.id });
     const now = Date.now();
     const maxOrder = nudgersRef.current.reduce((max, nudger) => Math.max(max, nudger.order), -1);
     const base = nudgerFromTemplate(template, {
+      documentId: doc.id,
       order: maxOrder + 1,
       settings: settingsRef.current,
       fileIds: [],
@@ -601,18 +616,7 @@ export default function App() {
 
   const saveNudgerAsTemplate = async (value: Nudger) => {
     try {
-      await store.saveTemplate({
-        id: newId(),
-        name: `${value.name} template`,
-        description: value.description ?? '',
-        system: value.system,
-        prompt: value.prompt,
-        facts: value.facts,
-        factsPrompt: value.factsPrompt,
-        builtin: false,
-        createdAt: Date.now(),
-        updatedAt: Date.now(),
-      });
+      await store.saveTemplate(templateFromNudger(value));
       notify('Saved as a custom template. Manage it on the Templates page.', 'success');
     } catch (error) {
       notify(describeStorageError(error), 'error');
@@ -659,7 +663,7 @@ export default function App() {
     const replyCount = repliesRef.current.filter((reply) => reply.nudgerId === nudger.id).length;
     setConfirm({
       title: `Delete “${nudger.name}”?`,
-      message: `This deletes the nudger and its reply history${replyCount ? ` (${replyCount} repl${replyCount === 1 ? 'y' : 'ies'} on this document)` : ''}. Other nudgers and documents are unchanged.`,
+      message: `This deletes the nudger and its replies in this document${replyCount ? ` (${replyCount} repl${replyCount === 1 ? 'y' : 'ies'})` : ''}. Other nudgers in this document are unchanged.`,
       confirmLabel: 'Delete nudger',
       danger: true,
       action: async () => {
@@ -855,7 +859,7 @@ export default function App() {
               onDuplicate={() => void duplicateActive()}
               onDelete={deleteActive}
               onOpenSettings={() => navigate({ name: 'settings' })}
-              nudgers={nudgers}
+              nudgers={scopedNudgers}
               files={files}
               replies={replyList}
               templates={templates}
@@ -869,6 +873,7 @@ export default function App() {
               onEditNudger={editNudger}
               onPreviewNudger={(nudger) => setPreviewNudgerId(nudger.id)}
               onDuplicateNudger={(nudger) => void duplicateNudger(nudger)}
+              onSaveNudgerAsTemplate={(nudger) => void saveNudgerAsTemplate(nudger)}
               onDeleteNudger={deleteNudger}
               onMoveNudger={(nudger, direction) => void store.moveNudger(nudger.id, direction)}
               onUpdateNudger={(nudger, patch) => void updateNudger(nudger, patch)}
@@ -891,6 +896,7 @@ export default function App() {
           <FilesPage
             files={files}
             nudgers={nudgers}
+            documents={documents}
             templates={templates}
             onToggleSidebar={() => setSidebarOpen((value) => !value)}
           />

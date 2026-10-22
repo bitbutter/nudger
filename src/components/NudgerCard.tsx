@@ -13,7 +13,6 @@ type NudgerCardProps = {
   fileCount: number;
   replies: Reply[];
   state: RunState | undefined;
-  busyElsewhere?: boolean;
   focused: boolean;
   hasKey: boolean;
   onFocus: () => void;
@@ -22,6 +21,7 @@ type NudgerCardProps = {
   onPreview: () => void;
   onEdit: () => void;
   onDuplicate: () => void;
+  onSaveAsTemplate: () => void;
   onDelete: () => void;
   onMove: (direction: -1 | 1) => void;
   onUpdate: (patch: Partial<Nudger>) => void;
@@ -179,7 +179,6 @@ export function NudgerCard({
   fileCount,
   replies,
   state,
-  busyElsewhere,
   focused,
   hasKey,
   onFocus,
@@ -188,6 +187,7 @@ export function NudgerCard({
   onPreview,
   onEdit,
   onDuplicate,
+  onSaveAsTemplate,
   onDelete,
   onMove,
   onUpdate,
@@ -232,7 +232,6 @@ export function NudgerCard({
           </span>
           {nudger.autoRun ? <span className="chip chip-auto">auto</span> : null}
           {nudger.facts ? <span className="chip chip-auto">facts</span> : null}
-          {busyElsewhere ? <span className="chip chip-warn">in another doc</span> : null}
           {nudger.done ? <span className="chip chip-done">done</span> : null}
           {!nudger.enabled ? <span className="chip">off</span> : null}
         </div>
@@ -329,11 +328,9 @@ export function NudgerCard({
           type="button"
           className={`btn btn-sm ${busy ? 'btn-danger' : 'btn-primary'}`}
           onClick={busy ? onCancel : onRun}
-          disabled={!busy && (blocked || busyElsewhere)}
+          disabled={!busy && blocked}
           title={
-            busyElsewhere
-              ? 'This nudger is running for another document. Switch back to cancel it.'
-              : nudger.done
+            nudger.done
               ? 'This nudger is marked done. Reopen it from the menu.'
               : !nudger.enabled
                 ? 'This nudger is disabled.'
@@ -367,6 +364,9 @@ export function NudgerCard({
             </button>
             <button type="button" onClick={(event) => { onDuplicate(); closeMenu(event); }}>
               Duplicate
+            </button>
+            <button type="button" onClick={(event) => { onSaveAsTemplate(); closeMenu(event); }}>
+              Save as template
             </button>
             <button
               type="button"

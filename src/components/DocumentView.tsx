@@ -36,6 +36,7 @@ type DocumentViewProps = {
   onEditNudger: (nudger: Nudger) => void;
   onPreviewNudger: (nudger: Nudger) => void;
   onDuplicateNudger: (nudger: Nudger) => void;
+  onSaveNudgerAsTemplate: (nudger: Nudger) => void;
   onDeleteNudger: (nudger: Nudger) => void;
   onMoveNudger: (nudger: Nudger, direction: -1 | 1) => void;
   onUpdateNudger: (nudger: Nudger, patch: Partial<Nudger>) => void;
@@ -235,6 +236,7 @@ export function DocumentView(props: DocumentViewProps) {
           onEditNudger={props.onEditNudger}
           onPreviewNudger={props.onPreviewNudger}
           onDuplicateNudger={props.onDuplicateNudger}
+          onSaveNudgerAsTemplate={props.onSaveNudgerAsTemplate}
           onDeleteNudger={props.onDeleteNudger}
           onMoveNudger={props.onMoveNudger}
           onUpdateNudger={props.onUpdateNudger}
