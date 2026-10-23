@@ -43,7 +43,7 @@ export function NudgerBoard(props: NudgerBoardProps) {
             Nudgers <span className="count">{nudgers.length}</span>
           </h2>
           <p className="section-sub">
-            Independent virtual repliers for this document. Each has its own prompt, files, budget
+            Independent virtual repliers for this document. Each has its own prompt, files, model
             and history; save one as a template to reuse it in another document.
           </p>
         </div>

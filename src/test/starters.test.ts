@@ -50,7 +50,6 @@ describe('starter library', () => {
     expect(nudger.templateId).toBe(template.id);
     expect(nudger.prompt).toBe(template.prompt);
     expect(nudger.system).toBe(template.system);
-    expect(nudger.budget).toBe(3);
     expect(nudger.autoRun).toBe(true);
     expect(nudger.maxContextChars).toBe(DEFAULT_SETTINGS.maxContextChars);
     expect(nudger.description).toBe(template.description);

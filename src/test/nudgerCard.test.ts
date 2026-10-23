@@ -38,7 +38,7 @@ function makeReply(id: string, createdAt: number, text: string, status: Reply['s
   };
 }
 
-function render(replies: Reply[], state?: RunState) {
+function render(replies: Reply[], state?: RunState, onUpdate: (patch: { autoRun?: boolean }) => void = () => {}) {
   host = document.createElement('div');
   document.body.appendChild(host);
   root = createRoot(host);
@@ -66,7 +66,7 @@ function render(replies: Reply[], state?: RunState) {
           onSaveAsTemplate: () => {},
           onDelete: () => {},
           onMove: () => {},
-          onUpdate: () => {},
+          onUpdate,
           onClearHistory: () => {},
           onReplyStatus: () => {},
           onRetry: () => {},
@@ -79,6 +79,7 @@ function render(replies: Reply[], state?: RunState) {
     html: host.innerHTML,
     main: host.querySelector('.card-reply > article.reply'),
     history: host.querySelector('.reply-history'),
+    auto: host.querySelector('.auto-toggle'),
   };
 }
 
@@ -129,5 +130,40 @@ describe('nudger card reply slot', () => {
   it('shows a pinned newest reply', () => {
     const { main } = render([makeReply('new', 2, 'Pinned nudge.', 'pinned')]);
     expect(main?.textContent).toContain('Pinned nudge.');
+  });
+});
+
+describe('auto toggle', () => {
+  it('reads auto and shows the nudger auto-run state next to Run', () => {
+    const on = render([], undefined, () => {});
+    const actions = host!.querySelector('.card-actions');
+    expect(on.auto?.textContent?.trim()).toBe('auto');
+    expect(on.auto?.getAttribute('aria-pressed')).toBe('true');
+    expect(actions?.querySelector('.auto-toggle')).not.toBeNull();
+    // It sits right after Run, before the other actions.
+    const labels = Array.from(actions?.querySelectorAll('button:not(.menu-summary)') ?? []).map(
+      (button) => button.textContent?.trim(),
+    );
+    expect(labels.slice(0, 3)).toEqual(['Run', 'auto', 'Preview']);
+  });
+
+  it('turns auto-run off from the card', () => {
+    const patches: Array<{ autoRun?: boolean }> = [];
+    render([], undefined, (patch) => patches.push(patch));
+    act(() => {
+      host!.querySelector<HTMLButtonElement>('.auto-toggle')!.click();
+    });
+    expect(patches).toEqual([{ autoRun: false }]);
+  });
+
+  it('renders as off when auto-run is off', () => {
+    nudger.autoRun = false;
+    try {
+      const off = render([], undefined, () => {});
+      expect(off.auto?.getAttribute('aria-pressed')).toBe('false');
+      expect(off.auto?.querySelector('.auto-dot')).not.toBeNull();
+    } finally {
+      nudger.autoRun = true;
+    }
   });
 });

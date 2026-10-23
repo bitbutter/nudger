@@ -565,7 +565,7 @@ export function SettingsPage({
             <h2>Where things go</h2>
             <p className="field-note">
               Documents, replies, nudgers and reference files are separate per document.
-              Prompt templates live above documents. A nudger's attached files, budget and reply
+              Prompt templates live above documents. A nudger's attached files, auto-run and reply
               history stay with its document; use Save as template on a card to carry its setup to
               another document.
             </p>

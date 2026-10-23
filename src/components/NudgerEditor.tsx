@@ -163,7 +163,6 @@ export function NudgerEditor({
       temperature: clamp(draft.temperature, 0, 2),
       maxTokens: Math.round(clamp(draft.maxTokens, 1, 64_000)),
       maxContextChars: Math.round(clamp(draft.maxContextChars, 1_000, 2_000_000)),
-      budget: Math.round(clamp(draft.budget, 0, 10_000)),
       facts: draft.facts === true,
       factsPrompt: draft.factsPrompt?.trim() || GENERIC_FACTS_FOCUS,
     };
@@ -486,19 +485,6 @@ export function NudgerEditor({
                 }
               />
             </label>
-            <label className="field">
-              <span>Auto-run allowance</span>
-              <input
-                className="input"
-                type="number"
-                min={0}
-                max={10000}
-                value={draft.budget}
-                onChange={(event) =>
-                  patch({ budget: Number.isFinite(event.target.valueAsNumber) ? event.target.valueAsNumber : 0 })
-                }
-              />
-            </label>
             <label className="field grow">
               <span>Max context characters</span>
               <input
@@ -533,8 +519,7 @@ export function NudgerEditor({
               />
               <span>
                 Auto-run about {(settings.autoRunDelayMs / 1000).toFixed(1)}s after typing stops, once
-                the mouse moves. It pauses when this nudger has saved the allowance above; running
-                by hand always works.
+                the mouse moves. Turn it off to run this nudger by hand only.
               </span>
             </label>
             <label className="checkbox-row">

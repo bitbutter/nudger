@@ -275,7 +275,6 @@ export function validateBundle(raw: unknown): ValidationResult {
         autoRun: false,
         enabled: asBoolean(item.enabled, true),
         done: asBoolean(item.done),
-        budget: Math.max(0, Math.min(10_000, Math.round(asNumber(item.budget, 3)))),
         facts: asBoolean(item.facts, false),
         factsPrompt:
           typeof item.factsPrompt === 'string' && item.factsPrompt.trim()

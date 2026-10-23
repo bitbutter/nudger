@@ -328,7 +328,6 @@ describe('export and import', () => {
         autoRun: false,
         enabled: true,
         done: false,
-        budget: 3,
         facts: false,
         factsPrompt: 'Focus on concrete specifics the writer should verify.',
         order: 0,

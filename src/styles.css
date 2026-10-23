@@ -533,6 +533,24 @@ html[data-theme='light'] .btn-primary {
   width: 100%;
 }
 
+/* The auto toggle sits next to Run: an accent dot and border mean it is on. */
+.auto-toggle .auto-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--muted);
+}
+
+.auto-toggle[aria-pressed='true'] {
+  border-color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 16%, var(--panel-2));
+  color: var(--text);
+}
+
+.auto-toggle[aria-pressed='true'] .auto-dot {
+  background: var(--accent);
+}
+
 .icon-btn {
   display: inline-grid;
   place-items: center;
@@ -1030,12 +1048,6 @@ body.resizing-columns * {
   letter-spacing: 0.02em;
   text-transform: lowercase;
   white-space: nowrap;
-}
-
-.chip-warn {
-  border-color: var(--warn-border);
-  background: var(--warn-bg);
-  color: var(--warn);
 }
 
 .chip-auto {

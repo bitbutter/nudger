@@ -57,7 +57,6 @@ export function testNudger(partial: Partial<Nudger> = {}): Nudger {
     autoRun: false,
     enabled: true,
     done: false,
-    budget: 3,
     facts: false,
     factsPrompt:
       'Focus on concrete specifics the writer should verify.',

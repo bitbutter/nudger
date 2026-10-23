@@ -66,8 +66,6 @@ export type Nudger = {
   enabled: boolean;
   /** Done stops generation for this nudger until reopened. */
   done: boolean;
-  /** Reply allowance inside this document. "More" adds 3. */
-  budget: number;
   /** Ask for a "Supporting Facts" list under each reply. Off by default. */
   facts: boolean;
   /** The role-specific focus for the fact-clue list; the output format is fixed. */

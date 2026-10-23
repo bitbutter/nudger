@@ -39,7 +39,7 @@ export function Welcome({ onNewDocument, onOpenSettings, hasKey }: WelcomeProps)
           <h2>Add nudgers</h2>
           <p>
             A completeness coach, a skeptical reviewer, a hiring manager, a devil’s advocate. Each
-            card has its own prompt, model, budget and reply history.
+            card has its own prompt, model and reply history.
           </p>
         </article>
         <article>

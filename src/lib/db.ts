@@ -127,6 +127,16 @@ export class NudgerDB extends Dexie {
           nudger.autoRun = true;
         });
     });
+    // The auto-run allowance is gone: the card has a plain auto on/off switch,
+    // so stored rows drop the field rather than exporting dead configuration.
+    this.version(8).upgrade(async (tx) => {
+      await tx
+        .table('nudgers')
+        .toCollection()
+        .modify((nudger: { budget?: number }) => {
+          delete nudger.budget;
+        });
+    });
   }
 }
 

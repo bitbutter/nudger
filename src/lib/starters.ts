@@ -210,7 +210,6 @@ export function nudgerFromTemplate(template: Template, options: NewNudgerOptions
     autoRun: true,
     enabled: true,
     done: false,
-    budget: 3,
     facts: template.facts === true,
     factsPrompt: template.factsPrompt?.trim() || GENERIC_FACTS_FOCUS,
     order: options.order,

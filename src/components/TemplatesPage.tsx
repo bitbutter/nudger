@@ -63,7 +63,6 @@ function TemplateEditor({
       autoRun: false,
       enabled: true,
       done: false,
-      budget: 3,
       facts: draft.facts === true,
       factsPrompt: draft.factsPrompt || GENERIC_FACTS_FOCUS,
       order: 0,

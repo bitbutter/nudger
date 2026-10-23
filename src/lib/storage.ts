@@ -181,8 +181,8 @@ export function createStore(database: NudgerDB = db) {
           updatedAt: now,
         });
       }
-      // The copy gets the same nudger setup (prompts, files, budget, auto-run),
-      // but no reply history.
+      // The copy gets the same nudger setup (prompts, files, auto-run), but no
+      // reply history.
       const sourceNudgers = await nudgers.where('documentId').equals(id).toArray();
       for (const nudger of sourceNudgers) {
         const nudgerId = newId();
@@ -513,7 +513,6 @@ export function createStore(database: NudgerDB = db) {
     if (typeof safe.maxContextChars === 'number') {
       safe.maxContextChars = Math.round(clamp(safe.maxContextChars, 1_000, 2_000_000));
     }
-    if (typeof safe.budget === 'number') safe.budget = Math.round(clamp(safe.budget, 0, 10_000));
     await nudgers.update(id, { ...safe, updatedAt: Date.now() });
   }
 
@@ -546,7 +545,6 @@ export function createStore(database: NudgerDB = db) {
         fileIds,
         autoRun: source.autoRun,
         done: false,
-        budget: 3,
         createdAt: now,
         updatedAt: now,
       };

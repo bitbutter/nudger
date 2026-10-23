@@ -228,6 +228,38 @@ describe('database upgrade to auto-run by default', () => {
   });
 });
 
+describe('database upgrade that removes the auto-run allowance', () => {
+  it('drops the stored budget so exports stop carrying dead configuration', async () => {
+    const name = `nudger-v7-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+    const legacy = new Dexie(name);
+    legacy.version(7).stores({
+      documents: 'id, title, createdAt, updatedAt',
+      versions: 'id, documentId, createdAt',
+      files: 'id, documentId, nudgerId, name, createdAt, updatedAt',
+      nudgers: 'id, documentId, order, createdAt',
+      replies: 'id, documentId, nudgerId, createdAt, [documentId+nudgerId]',
+      templates: 'id, createdAt',
+      settings: 'key',
+    });
+    await legacy.open();
+    await legacy
+      .table('nudgers')
+      .add({ ...testNudger(), id: 'with-allowance', budget: 7, autoRun: true } as never);
+    legacy.close();
+
+    const upgraded = new NudgerDB(name);
+    try {
+      await upgraded.open();
+      const stored = (await upgraded.nudgers.get('with-allowance')) as Record<string, unknown>;
+      expect(stored.autoRun).toBe(true);
+      expect('budget' in stored).toBe(false);
+    } finally {
+      upgraded.close();
+      await Dexie.delete(name);
+    }
+  });
+});
+
 describe('reference file migration planning', () => {
   it('copies a shared library file into every document and rewires nudgers and replies', () => {
     const docs = [
@@ -461,7 +493,7 @@ describe('document-bound nudger storage', () => {
     const store = await freshStore();
     const doc = await store.createDocument('Source', 'Text');
     const nudger = await store.createNudger(
-      newNudgerInput({ documentId: doc.id, name: 'Coach', budget: 7, facts: true, autoRun: true }),
+      newNudgerInput({ documentId: doc.id, name: 'Coach', facts: true, autoRun: true }),
     );
     await store.addReply({
       documentId: doc.id,
@@ -479,7 +511,6 @@ describe('document-bound nudger storage', () => {
     expect(copied).toHaveLength(1);
     expect(copied[0].id).not.toBe(nudger.id);
     expect(copied[0].name).toBe('Coach');
-    expect(copied[0].budget).toBe(7);
     expect(copied[0].facts).toBe(true);
     expect(copied[0].autoRun).toBe(true);
     expect(await store.listReplies(copy!.id)).toHaveLength(0);

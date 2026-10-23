@@ -158,7 +158,7 @@ function ReplyItem({ reply, compact, onStatus, onRetry }: ReplyItemProps) {
           type="button"
           className="link-btn"
           onClick={onRetry}
-          title="Starts a new run and uses one reply from the budget"
+          title="Starts another run now"
         >
           Run again
         </button>
@@ -200,8 +200,6 @@ export function NudgerCard({
   onOpenSettings,
 }: NudgerCardProps) {
   const busy = state?.phase === 'queued' || state?.phase === 'running' || state?.phase === 'retrying';
-  const used = replies.length;
-  const budgetLeft = Math.max(0, nudger.budget - used);
   // The card only ever shows its newest reply. When that one is dismissed or
   // archived the slot explains it instead of falling back to an older nudge,
   // which would read as if the old advice were still current.
@@ -209,9 +207,7 @@ export function NudgerCard({
   const latest = ordered[0] ?? null;
   const current = latest && (latest.status === 'new' || latest.status === 'pinned') ? latest : null;
   const older = ordered.filter((reply) => reply.id !== current?.id);
-  // The allowance only limits auto-run; a click on Run is always deliberate.
   const blocked = !nudger.enabled || nudger.done;
-  const autoExhausted = nudger.autoRun && budgetLeft === 0;
   const style = { '--accent': nudger.color } as CSSProperties;
 
   return (
@@ -230,14 +226,6 @@ export function NudgerCard({
           <h3 className="card-name">{nudger.name}</h3>
         </div>
         <div className="card-chips">
-          {nudger.autoRun ? (
-            <span
-              className={`chip ${budgetLeft === 0 ? 'chip-warn' : ''}`}
-              title="Auto-run allowance: replies saved here / how many auto-run may add before it pauses"
-            >
-              auto {used}/{nudger.budget}
-            </span>
-          ) : null}
           {nudger.facts ? <span className="chip chip-auto">facts</span> : null}
           {nudger.done ? <span className="chip chip-done">done</span> : null}
           {!nudger.enabled ? <span className="chip">off</span> : null}
@@ -258,10 +246,6 @@ export function NudgerCard({
           <span>Done — generation stopped</span>
         ) : !nudger.enabled ? (
           <span>Disabled</span>
-        ) : autoExhausted ? (
-          <span>
-            Auto-run paused: allowance used ({used}/{nudger.budget}). Raise it in Edit, or run by hand.
-          </span>
         ) : latest ? (
           <span>Last reply {formatRelative(latest.createdAt)}</span>
         ) : (
@@ -349,6 +333,20 @@ export function NudgerCard({
         >
           {busy ? 'Cancel' : 'Run'}
         </button>
+        <button
+          type="button"
+          className="btn btn-sm auto-toggle"
+          aria-pressed={nudger.autoRun}
+          onClick={() => onUpdate({ autoRun: !nudger.autoRun })}
+          title={
+            nudger.autoRun
+              ? 'Auto-run is on: this nudger runs after you stop typing and move the mouse. Click to turn it off.'
+              : 'Auto-run is off: only Run starts this nudger. Click to turn it on.'
+          }
+        >
+          <span className="auto-dot" aria-hidden="true" />
+          auto
+        </button>
         <button type="button" className="btn btn-sm" onClick={onPreview}>
           Preview
         </button>
@@ -383,12 +381,6 @@ export function NudgerCard({
             </button>
             <button type="button" onClick={(event) => { onSaveAsTemplate(); closeMenu(event); }}>
               Save as template
-            </button>
-            <button
-              type="button"
-              onClick={(event) => { onUpdate({ autoRun: !nudger.autoRun }); closeMenu(event); }}
-            >
-              Auto-run: {nudger.autoRun ? 'on' : 'off'}
             </button>
             <button
               type="button"

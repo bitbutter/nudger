@@ -419,9 +419,7 @@ export default function App() {
           waiting = true;
           continue;
         }
-        const used = repliesRef.current.filter((reply) => reply.nudgerId === nudger.id).length;
         handled.add(nudger.id);
-        if (used >= nudger.budget) continue;
         void runNudgerRef.current(nudger, { source: 'auto' });
       }
       if (waiting) retry = setTimeout(tick, 1200);
@@ -675,7 +673,6 @@ export default function App() {
         name: `${value.name} (copy)`,
         autoRun: value.autoRun,
         done: false,
-        budget: 3,
       });
       setEditor(null);
       notify('Copied as a new nudger.', 'success');
@@ -745,7 +742,7 @@ export default function App() {
     setConfirm({
       title: `Clear ${nudger.name} history?`,
       message:
-        'This deletes every saved reply from this nudger for this document and resets its budget count. Other documents keep their own reply histories.',
+        'This deletes every saved reply from this nudger for this document. Other documents keep their own reply histories.',
       confirmLabel: 'Clear history',
       danger: true,
       action: async () => {
