@@ -397,6 +397,54 @@ describe('provider errors', () => {
     ).rejects.toMatchObject({ kind: 'timeout' });
   });
 
+  it('explains a reasoning model that spent its whole budget thinking', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () =>
+        jsonResponse({
+          choices: [
+            {
+              index: 0,
+              finish_reason: 'length',
+              message: {
+                role: 'assistant',
+                content: '',
+                reasoning_content: 'We need answer exactly JSON only. The reference note lists...',
+              },
+            },
+          ],
+        }),
+      ),
+    );
+    try {
+      await callModel({ provider, apiKey: 'k', system: '', user: 'Hi', timeoutMs: 5000 });
+      throw new Error('expected the run to fail');
+    } catch (error) {
+      expect(error).toBeInstanceOf(NudgeError);
+      expect((error as NudgeError).kind).toBe('empty');
+      const message = (error as NudgeError).message;
+      expect(message).toContain('reasoning');
+      expect(message).toContain('max tokens');
+      expect(message).toContain(String(DEFAULT_SETTINGS.maxTokens));
+      expect(message).toContain('finish reason "length"');
+    }
+  });
+
+  it('reports a plain empty reply without blaming reasoning', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => jsonResponse({ choices: [{ message: { role: 'assistant', content: '' } }] })),
+    );
+    try {
+      await callModel({ provider, apiKey: 'k', system: '', user: 'Hi', timeoutMs: 5000 });
+      throw new Error('expected the run to fail');
+    } catch (error) {
+      expect((error as NudgeError).kind).toBe('empty');
+      expect((error as NudgeError).message).toContain('empty reply');
+      expect((error as NudgeError).message).not.toContain('reasoning');
+    }
+  });
+
   it('refuses to call without a key or model', async () => {
     await expect(
       callModel({ provider, apiKey: '', system: '', user: 'Hi', timeoutMs: 5000 }),

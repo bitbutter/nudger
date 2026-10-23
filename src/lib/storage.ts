@@ -181,8 +181,8 @@ export function createStore(database: NudgerDB = db) {
           updatedAt: now,
         });
       }
-      // The copy gets the same nudger setup (prompts, files, budget), but no
-      // reply history and no auto-run, matching how duplicating a nudger works.
+      // The copy gets the same nudger setup (prompts, files, budget, auto-run),
+      // but no reply history.
       const sourceNudgers = await nudgers.where('documentId').equals(id).toArray();
       for (const nudger of sourceNudgers) {
         const nudgerId = newId();
@@ -207,7 +207,7 @@ export function createStore(database: NudgerDB = db) {
           id: nudgerId,
           documentId: copy.id,
           fileIds,
-          autoRun: false,
+          autoRun: nudger.autoRun,
           done: false,
           createdAt: now,
           updatedAt: now,
@@ -544,7 +544,7 @@ export function createStore(database: NudgerDB = db) {
         name: `${source.name} (copy)`,
         order,
         fileIds,
-        autoRun: false,
+        autoRun: source.autoRun,
         done: false,
         budget: 3,
         createdAt: now,

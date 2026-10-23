@@ -1,5 +1,6 @@
 import type { Nudger, Settings, Template } from '../types';
 import { GENERIC_FACTS_FOCUS } from './facts';
+import { DEFAULT_MAX_TOKENS } from './defaults';
 
 export const NUDGER_COLORS = [
   { value: '#7aa2f7', name: 'Blue' },
@@ -204,9 +205,9 @@ export function nudgerFromTemplate(template: Template, options: NewNudgerOptions
     prompt: template.prompt,
     fileIds: options.fileIds ?? [],
     temperature: template.temperature ?? 0.4,
-    maxTokens: template.maxTokens ?? 700,
+    maxTokens: template.maxTokens ?? DEFAULT_MAX_TOKENS,
     maxContextChars: template.maxContextChars ?? options.settings.maxContextChars,
-    autoRun: false,
+    autoRun: true,
     enabled: true,
     done: false,
     budget: 3,

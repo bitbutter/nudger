@@ -40,7 +40,7 @@ describe('nudger storage', () => {
   it('creates, reorders, duplicates and deletes nudgers', async () => {
     const store = await freshStore();
     const doc = await store.createDocument('Doc', 'Text');
-    const a = await store.createNudger(newNudgerInput({ documentId: doc.id, name: 'A' }));
+    const a = await store.createNudger(newNudgerInput({ documentId: doc.id, name: 'A', autoRun: true }));
     const b = await store.createNudger(newNudgerInput({ documentId: doc.id, name: 'B' }));
     const c = await store.createNudger(newNudgerInput({ documentId: doc.id, name: 'C' }));
     expect([a.order, b.order, c.order]).toEqual([0, 1, 2]);
@@ -53,7 +53,7 @@ describe('nudger storage', () => {
 
     const copy = await store.duplicateNudger(a.id);
     expect(copy?.name).toBe('A (copy)');
-    expect(copy?.autoRun).toBe(false);
+    expect(copy?.autoRun).toBe(true);
     expect(copy?.documentId).toBe(doc.id);
     expect(copy?.order).toBe(3);
 

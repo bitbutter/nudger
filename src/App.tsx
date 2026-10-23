@@ -26,6 +26,7 @@ import { createAutoRunTrigger } from './lib/autoRunTrigger';
 import { effectiveCustomHeaders, getProviderPreset } from './lib/providers';
 import { clearApiKey, loadApiKey, saveApiKey } from './lib/keyStore';
 import { blankTemplate, nudgerFromTemplate, templateFromNudger } from './lib/starters';
+import { dismissStartsNewNudge } from './lib/replies';
 import { downloadText, slugify } from './lib/util';
 import { exportFileName } from './lib/exportImport';
 import { Sidebar } from './components/Sidebar';
@@ -672,7 +673,7 @@ export default function App() {
       await store.createNudger({
         ...rest,
         name: `${value.name} (copy)`,
-        autoRun: false,
+        autoRun: value.autoRun,
         done: false,
         budget: 3,
       });
@@ -759,7 +760,16 @@ export default function App() {
       await store.setReplyStatus(reply.id, status);
     } catch (error) {
       notify(describeStorageError(error), 'error');
+      return;
     }
+    // Dismissing the nudge on the card asks for the next one: start a fresh run
+    // right away instead of leaving the writer to press Run. Dismissing an
+    // older reply is triage and starts nothing. The allowance gates unattended
+    // auto-run only, so this deliberate dismissal is not refused.
+    if (status !== 'dismissed') return;
+    if (!dismissStartsNewNudge(repliesRef.current, reply)) return;
+    const nudger = nudgersRef.current.find((item) => item.id === reply.nudgerId);
+    if (nudger) void runNudgerRef.current(nudger, { source: 'auto' });
   };
 
   const saveSettings = async (patch: Partial<Settings>) => {

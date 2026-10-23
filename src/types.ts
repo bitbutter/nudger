@@ -68,7 +68,7 @@ export type Nudger = {
   done: boolean;
   /** Reply allowance inside this document. "More" adds 3. */
   budget: number;
-  /** Ask for a "Facts to check" list under each reply. Off by default. */
+  /** Ask for a "Supporting Facts" list under each reply. Off by default. */
   facts: boolean;
   /** The role-specific focus for the fact-clue list; the output format is fixed. */
   factsPrompt: string;

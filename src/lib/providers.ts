@@ -256,6 +256,8 @@ function extractErrorMessage(raw: string): string {
 
 const MAX_RESPONSE_BYTES = 2_000_000;
 const MAX_ERROR_BODY_BYTES = 64_000;
+/** How much of a raw provider body the "Technical detail" disclosure shows. */
+const RAW_DETAIL_CHARS = 300;
 const OVERSIZED_RESPONSE_MESSAGE =
   'The provider response is larger than 2 MB. The reply was not read. Check the endpoint and model.';
 
@@ -469,6 +471,31 @@ function readRawModel(data: unknown): string | undefined {
   return isRecord(data) && typeof data.model === 'string' ? data.model : undefined;
 }
 
+function readOpenAiChoiceField(data: unknown, field: string): unknown {
+  if (!isRecord(data)) return undefined;
+  const choices = data.choices;
+  if (!Array.isArray(choices) || !choices.length) return undefined;
+  const first = choices[0];
+  if (!isRecord(first)) return undefined;
+  const message = first.message;
+  if (isRecord(message) && field in message) return message[field];
+  return first[field];
+}
+
+/**
+ * Reasoning models (deepseek-flash and friends) keep the scratchpad in a sibling
+ * field of the answer. When the token budget runs out mid-thought, `content` is
+ * empty and everything arrives there, so the plain "empty reply" message would
+ * tell the writer nothing actionable.
+ */
+function reasoningChars(data: unknown): number {
+  for (const field of ['reasoning_content', 'reasoning']) {
+    const value = readOpenAiChoiceField(data, field);
+    if (typeof value === 'string' && value.trim()) return value.length;
+  }
+  return 0;
+}
+
 export async function callModel(input: ModelCallInput): Promise<ModelCallResult> {
   const { provider, apiKey } = input;
   const key = apiKey.trim();
@@ -611,7 +638,7 @@ export async function callModel(input: ModelCallInput): Promise<ModelCallResult>
   } catch {
     throw new NudgeError('bad_request', 'The provider returned a non-JSON response. Check the base URL and model.', {
       status: response.status,
-      detail: raw.slice(0, 300),
+      detail: raw.slice(0, RAW_DETAIL_CHARS),
     });
   }
   if (isRecord(data) && data.error) {
@@ -623,10 +650,20 @@ export async function callModel(input: ModelCallInput): Promise<ModelCallResult>
 
   const text = (provider.kind === 'anthropic' ? readAnthropicText(data) : readOpenAiText(data)).trim();
   if (!text) {
+    const thought = provider.kind === 'anthropic' ? 0 : reasoningChars(data);
+    if (thought > 0) {
+      const finish = readOpenAiChoiceField(data, 'finish_reason');
+      const reason = typeof finish === 'string' ? `, finish reason "${finish}"` : '';
+      throw new NudgeError(
+        'empty',
+        `The model spent its whole ${provider.maxTokens}-token budget on reasoning (${thought.toLocaleString()} characters of thinking${reason}) and sent no reply. Raise max tokens for this nudger, or pick a model that answers without a long thinking step.`,
+        { detail: raw.slice(0, RAW_DETAIL_CHARS) },
+      );
+    }
     throw new NudgeError(
       'empty',
       'The provider returned an empty reply. Try again, or check that the model id is a chat model.',
-      { detail: raw.slice(0, 300) },
+      { detail: raw.slice(0, RAW_DETAIL_CHARS) },
     );
   }
 

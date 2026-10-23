@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { STARTER_TEMPLATES, getTemplateById, nudgerFromTemplate } from '../lib/starters';
 import { hasContextPlaceholder } from '../lib/placeholders';
-import { DEFAULT_SETTINGS } from '../lib/defaults';
+import { DEFAULT_MAX_TOKENS, DEFAULT_SETTINGS, LEGACY_DEFAULT_MAX_TOKENS } from '../lib/defaults';
 
 describe('starter library', () => {
   it('ships the ten required starters with unique names and ids', () => {
@@ -51,11 +51,22 @@ describe('starter library', () => {
     expect(nudger.prompt).toBe(template.prompt);
     expect(nudger.system).toBe(template.system);
     expect(nudger.budget).toBe(3);
-    expect(nudger.autoRun).toBe(false);
+    expect(nudger.autoRun).toBe(true);
     expect(nudger.maxContextChars).toBe(DEFAULT_SETTINGS.maxContextChars);
     expect(nudger.description).toBe(template.description);
     expect(nudger.facts).toBe(true);
     expect(nudger.factsPrompt).toContain('evidence');
+    expect(nudger.maxTokens).toBe(DEFAULT_MAX_TOKENS);
+  });
+
+  it('keeps a template max tokens override and defaults the rest to the reasoning-safe budget', () => {
+    const template = getTemplateById('starter-skeptical-reviewer')!;
+    const withOverride = nudgerFromTemplate(
+      { ...template, maxTokens: 900 },
+      { documentId: 'doc-1', order: 0, settings: DEFAULT_SETTINGS },
+    );
+    expect(withOverride.maxTokens).toBe(900);
+    expect(DEFAULT_MAX_TOKENS).toBeGreaterThan(LEGACY_DEFAULT_MAX_TOKENS);
   });
 
   it('turns fact clues on only for fact-oriented starters', () => {

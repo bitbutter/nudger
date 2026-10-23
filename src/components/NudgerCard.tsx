@@ -3,6 +3,7 @@ import type { Nudger, Reply, ReplyStatus } from '../types';
 import type { RunState } from '../lib/runManager';
 import { runStateMessage } from '../lib/runManager';
 import { copyText, formatRelative } from '../lib/util';
+import { newestFirst } from '../lib/replies';
 import { GENERIC_FACTS_FOCUS } from '../lib/facts';
 import { useToast } from './Toast';
 
@@ -85,7 +86,7 @@ function ReplyItem({ reply, compact, onStatus, onRetry }: ReplyItemProps) {
   const copyFacts = async () => {
     const facts = reply.facts ?? [];
     const text = [
-      'Facts to check (model-generated; verify against the source):',
+      'Supporting Facts (model-generated; verify against the source):',
       ...facts.map((fact) => `- ${fact}`),
     ].join('\n');
     const ok = await copyText(text);
@@ -110,7 +111,7 @@ function ReplyItem({ reply, compact, onStatus, onRetry }: ReplyItemProps) {
       {reply.facts && reply.facts.length > 0 ? (
         <div className="reply-facts">
           <div className="reply-facts-head">
-            <span>Facts to check</span>
+            <span>Supporting Facts</span>
             <span className="reply-facts-note">behind this nudge · model-generated; verify</span>
             <button type="button" className="link-btn" onClick={copyFacts}>
               Copy
@@ -201,9 +202,13 @@ export function NudgerCard({
   const busy = state?.phase === 'queued' || state?.phase === 'running' || state?.phase === 'retrying';
   const used = replies.length;
   const budgetLeft = Math.max(0, nudger.budget - used);
-  const active = replies.filter((reply) => reply.status === 'new' || reply.status === 'pinned');
-  const latest = active[0];
-  const older = replies.filter((reply) => reply.id !== latest?.id);
+  // The card only ever shows its newest reply. When that one is dismissed or
+  // archived the slot explains it instead of falling back to an older nudge,
+  // which would read as if the old advice were still current.
+  const ordered = newestFirst(replies);
+  const latest = ordered[0] ?? null;
+  const current = latest && (latest.status === 'new' || latest.status === 'pinned') ? latest : null;
+  const older = ordered.filter((reply) => reply.id !== current?.id);
   // The allowance only limits auto-run; a click on Run is always deliberate.
   const blocked = !nudger.enabled || nudger.done;
   const autoExhausted = nudger.autoRun && budgetLeft === 0;
@@ -287,10 +292,16 @@ export function NudgerCard({
       ) : null}
 
       <div className="card-reply">
-        {latest ? (
-          <ReplyItem reply={latest} onStatus={onReplyStatus} onRetry={onRetry} />
-        ) : replies.length > 0 ? (
-          <p className="reply-placeholder">No active reply — dismissed or archived replies are in History.</p>
+        {current ? (
+          <ReplyItem reply={current} onStatus={onReplyStatus} onRetry={onRetry} />
+        ) : latest ? (
+          <p className="reply-placeholder">
+            {latest.status === 'dismissed'
+              ? busy
+                ? 'Dismissed — calculating a new nudge…'
+                : 'Dismissed. Run to calculate a new nudge.'
+              : 'Archived — the reply stays in History.'}
+          </p>
         ) : busy ? (
           <p className="reply-placeholder">Reading the draft and preparing a nudge…</p>
         ) : (
@@ -403,7 +414,7 @@ export function NudgerCard({
                 closeMenu(event);
               }}
             >
-              Facts to check: {nudger.facts ? 'on' : 'off'}
+              Supporting Facts: {nudger.facts ? 'on' : 'off'}
             </button>
             <button
               type="button"

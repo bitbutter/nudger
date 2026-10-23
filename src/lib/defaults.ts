@@ -2,13 +2,23 @@ import type { ProviderId, Settings, Theme, Layout } from '../types';
 import { getProviderPreset, PROVIDER_PRESETS } from './providers';
 import { clamp } from './util';
 
+/**
+ * Output budget for one nudge. A reply is two sentences, so this is really
+ * headroom for reasoning models: deepseek-flash (the default) spends part of the
+ * same budget on its thinking step, and a tighter cap ends runs with empty
+ * content. Raising a cap costs nothing unless the model uses it.
+ */
+export const DEFAULT_MAX_TOKENS = 2_000;
+/** The pre-reasoning-model default, bumped by the database upgrade to v6. */
+export const LEGACY_DEFAULT_MAX_TOKENS = 700;
+
 export const DEFAULT_SETTINGS: Settings = {
   providerId: 'deepseek',
   model: getProviderPreset('deepseek').defaultModel,
   baseUrl: getProviderPreset('deepseek').baseUrl,
   rememberKey: false,
   temperature: 0.4,
-  maxTokens: 700,
+  maxTokens: DEFAULT_MAX_TOKENS,
   maxContextChars: 100_000,
   autoRunDelayMs: 1500,
   maxConcurrentRuns: 2,

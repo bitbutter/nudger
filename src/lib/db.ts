@@ -1,6 +1,7 @@
 import Dexie, { type Table } from 'dexie';
 import type { Document, Nudger, ReferenceFile, Reply, Template, Version } from '../types';
 import type { StoredSettings } from './defaults';
+import { DEFAULT_MAX_TOKENS, LEGACY_DEFAULT_MAX_TOKENS } from './defaults';
 import { planFileMigration, planFileOwnershipMigration, planNudgerMigration } from './migrate';
 
 export type SettingsRow = { key: string; value: StoredSettings };
@@ -93,6 +94,38 @@ export class NudgerDB extends Dexie {
       const row = await tx.table('settings').get('app');
       if (!row?.value || row.value.layout !== 'stacked') return;
       await tx.table('settings').put({ ...row, value: { ...row.value, layout: 'side' } });
+    });
+    // The default model (deepseek-flash) is a reasoning model, and its thinking
+    // step shares the max-token budget with the answer. The old 700-token default
+    // runs out mid-thought and returns no reply, so stored values that are still
+    // the untouched old default are raised. A value someone chose is left alone.
+    this.version(6).upgrade(async (tx) => {
+      await tx
+        .table('settings')
+        .toCollection()
+        .modify((row: { value?: StoredSettings }) => {
+          if (row?.value?.maxTokens === LEGACY_DEFAULT_MAX_TOKENS) {
+            row.value.maxTokens = DEFAULT_MAX_TOKENS;
+          }
+        });
+      await tx
+        .table('nudgers')
+        .toCollection()
+        .modify((nudger: { maxTokens?: number }) => {
+          if (nudger.maxTokens === LEGACY_DEFAULT_MAX_TOKENS) nudger.maxTokens = DEFAULT_MAX_TOKENS;
+        });
+    });
+    // Auto-run is the default now. Every nudger stored so far was created under
+    // the old default (off), so they are switched on once here; the card menu
+    // still turns auto-run off per nudger. Imported nudgers stay off because the
+    // importer sets that explicitly, not because of this default.
+    this.version(7).upgrade(async (tx) => {
+      await tx
+        .table('nudgers')
+        .toCollection()
+        .modify((nudger: { autoRun?: boolean }) => {
+          nudger.autoRun = true;
+        });
     });
   }
 }

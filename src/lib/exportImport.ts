@@ -9,7 +9,7 @@ import type {
   Template,
   Version,
 } from '../types';
-import { normalizeSettings } from './defaults';
+import { DEFAULT_MAX_TOKENS, normalizeSettings } from './defaults';
 import { planFileOwnershipMigration } from './migrate';
 import { validateFileName } from './referenceFiles';
 import { newId, wordCount } from './util';
@@ -267,7 +267,7 @@ export function validateBundle(raw: unknown): ValidationResult {
             ? item.model.trim()
             : undefined,
         temperature: Math.max(0, Math.min(2, asNumber(item.temperature, 0.4))),
-        maxTokens: Math.max(1, Math.min(64_000, Math.round(asNumber(item.maxTokens, 700)))),
+        maxTokens: Math.max(1, Math.min(64_000, Math.round(asNumber(item.maxTokens, DEFAULT_MAX_TOKENS)))),
         maxContextChars: Math.max(
           1_000,
           Math.min(2_000_000, Math.round(asNumber(item.maxContextChars, 100_000))),

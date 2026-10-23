@@ -3,7 +3,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 import { NudgerDB } from '../lib/db';
 import { planFileMigration, planNudgerMigration } from '../lib/migrate';
 import { getTemplateById, nudgerFromTemplate, templateFromNudger } from '../lib/starters';
-import { DEFAULT_SETTINGS } from '../lib/defaults';
+import { DEFAULT_MAX_TOKENS, DEFAULT_SETTINGS, LEGACY_DEFAULT_MAX_TOKENS } from '../lib/defaults';
 import { makeStore, newNudgerInput, testNudger } from './helpers';
 
 const active: Awaited<ReturnType<typeof makeStore>>[] = [];
@@ -153,6 +153,80 @@ function legacyFile(name = 'notes.md', content = 'facts') {
     wordCount: 1,
   };
 }
+
+describe('database upgrade to reasoning-safe max tokens', () => {
+  it('raises the untouched 700-token default and leaves chosen values alone', async () => {
+    const name = `nudger-v5-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+    const legacy = new Dexie(name);
+    legacy.version(5).stores({
+      documents: 'id, title, createdAt, updatedAt',
+      versions: 'id, documentId, createdAt',
+      files: 'id, documentId, nudgerId, name, createdAt, updatedAt',
+      nudgers: 'id, documentId, order, createdAt',
+      replies: 'id, documentId, nudgerId, createdAt, [documentId+nudgerId]',
+      templates: 'id, createdAt',
+      settings: 'key',
+    });
+    await legacy.open();
+    const now = Date.now();
+    await legacy.table('settings').put({
+      key: 'app',
+      value: { ...DEFAULT_SETTINGS, maxTokens: LEGACY_DEFAULT_MAX_TOKENS },
+    });
+    await legacy.table('nudgers').bulkAdd([
+      { ...testNudger(), id: 'left-at-default', maxTokens: LEGACY_DEFAULT_MAX_TOKENS },
+      { ...testNudger(), id: 'chosen-low', maxTokens: 300 },
+      { ...testNudger(), id: 'chosen-high', maxTokens: 4000 },
+    ]);
+    legacy.close();
+
+    const upgraded = new NudgerDB(name);
+    try {
+      await upgraded.open();
+      const settings = await upgraded.settings.get('app');
+      expect(settings?.value.maxTokens).toBe(DEFAULT_MAX_TOKENS);
+      expect((await upgraded.nudgers.get('left-at-default'))?.maxTokens).toBe(DEFAULT_MAX_TOKENS);
+      expect((await upgraded.nudgers.get('chosen-low'))?.maxTokens).toBe(300);
+      expect((await upgraded.nudgers.get('chosen-high'))?.maxTokens).toBe(4000);
+      void now;
+    } finally {
+      upgraded.close();
+      await Dexie.delete(name);
+    }
+  });
+});
+
+describe('database upgrade to auto-run by default', () => {
+  it('switches auto-run on once for nudgers stored under the old off default', async () => {
+    const name = `nudger-v6-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+    const legacy = new Dexie(name);
+    legacy.version(6).stores({
+      documents: 'id, title, createdAt, updatedAt',
+      versions: 'id, documentId, createdAt',
+      files: 'id, documentId, nudgerId, name, createdAt, updatedAt',
+      nudgers: 'id, documentId, order, createdAt',
+      replies: 'id, documentId, nudgerId, createdAt, [documentId+nudgerId]',
+      templates: 'id, createdAt',
+      settings: 'key',
+    });
+    await legacy.open();
+    await legacy.table('nudgers').bulkAdd([
+      { ...testNudger(), id: 'off', autoRun: false },
+      { ...testNudger(), id: 'on', autoRun: true },
+    ]);
+    legacy.close();
+
+    const upgraded = new NudgerDB(name);
+    try {
+      await upgraded.open();
+      expect((await upgraded.nudgers.get('off'))?.autoRun).toBe(true);
+      expect((await upgraded.nudgers.get('on'))?.autoRun).toBe(true);
+    } finally {
+      upgraded.close();
+      await Dexie.delete(name);
+    }
+  });
+});
 
 describe('reference file migration planning', () => {
   it('copies a shared library file into every document and rewires nudgers and replies', () => {
@@ -387,7 +461,7 @@ describe('document-bound nudger storage', () => {
     const store = await freshStore();
     const doc = await store.createDocument('Source', 'Text');
     const nudger = await store.createNudger(
-      newNudgerInput({ documentId: doc.id, name: 'Coach', budget: 7, facts: true }),
+      newNudgerInput({ documentId: doc.id, name: 'Coach', budget: 7, facts: true, autoRun: true }),
     );
     await store.addReply({
       documentId: doc.id,
@@ -407,7 +481,7 @@ describe('document-bound nudger storage', () => {
     expect(copied[0].name).toBe('Coach');
     expect(copied[0].budget).toBe(7);
     expect(copied[0].facts).toBe(true);
-    expect(copied[0].autoRun).toBe(false);
+    expect(copied[0].autoRun).toBe(true);
     expect(await store.listReplies(copy!.id)).toHaveLength(0);
     expect(await store.listReplies(doc.id)).toHaveLength(1);
   });
@@ -468,7 +542,7 @@ describe('nudger to template', () => {
     expect(other.maxTokens).toBe(900);
     expect(other.maxContextChars).toBe(50_000);
     expect(other.fileIds).toEqual([]);
-    expect(other.autoRun).toBe(false);
+    expect(other.autoRun).toBe(true);
   });
 
   it('reuses a nudger saved as a template in another document', async () => {

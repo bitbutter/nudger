@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react';
 import type { Caret, Settings, Template } from '../types';
 import { store } from '../lib/storage';
 import { blankTemplate } from '../lib/starters';
+import { DEFAULT_MAX_TOKENS } from '../lib/defaults';
 import { CONTEXT_PLACEHOLDERS, CONTEXT_PLACEHOLDER_HELP, hasContextPlaceholder, listFilePlaceholders } from '../lib/placeholders';
 import { prepareRun } from '../lib/run';
 import { newId } from '../lib/util';
@@ -242,7 +243,7 @@ function TemplateEditor({
                     ...draft,
                     maxTokens: Number.isFinite(event.target.valueAsNumber)
                       ? event.target.valueAsNumber
-                      : 700,
+                      : DEFAULT_MAX_TOKENS,
                   })
                 }
               />

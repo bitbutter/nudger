@@ -27,7 +27,7 @@ export function FactsFields({ enabled, focus, disabled, onChange }: FactsFieldsP
             })
           }
         />
-        <span>Add a “Facts to check” list under each reply</span>
+        <span>Add a “Supporting Facts” list under each reply</span>
       </label>
       <p className="field-note">
         The reply and the fact list come back in one JSON response from the same request. The list is
