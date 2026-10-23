@@ -964,6 +964,17 @@ body.resizing-columns * {
   align-items: start;
 }
 
+/* Run all scopes to the draft selection, so say so where the button is. */
+.board-scope {
+  margin: 0 0 12px;
+  border: 1px solid var(--info-border);
+  background: var(--info-bg);
+  color: var(--info-ink);
+  border-radius: 8px;
+  padding: 7px 10px;
+  font-size: 13.8px;
+}
+
 .nudger-card {
   --accent: #8fb3ff;
   position: relative;
@@ -1705,6 +1716,12 @@ body.resizing-columns * {
   color: var(--muted);
   font-size: 14.4px;
   font-weight: 600;
+}
+
+.placeholder-note {
+  margin: 8px 0 0;
+  color: var(--faint);
+  font-size: 13.2px;
 }
 
 .placeholder-table {

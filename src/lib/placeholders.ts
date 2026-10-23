@@ -51,6 +51,14 @@ export type ResolveContext = {
   files: ReferenceFile[];
   /** Every file name in the document, for distinguishing "not attached" from "missing". */
   allFileNames?: string[];
+  /**
+   * True when `text` is a selected passage rather than the whole draft. Every
+   * context placeholder then reads that passage: the passage is what the run is
+   * about, so {{selection}} and {{full_text}} are it, {{before_cursor}} is all
+   * of it (the cursor sits at its end) and {{after_cursor}} is empty because
+   * nothing after the passage is sent.
+   */
+  scoped?: boolean;
   now?: Date;
 };
 
@@ -128,16 +136,17 @@ export function resolveTemplateText(raw: string, ctx: ResolveContext): ResolveTe
   const length = ctx.text.length;
   const start = clamp(ctx.selectionStart, 0, length);
   const end = clamp(Math.max(start, ctx.selectionEnd), 0, length);
+  const cursor = ctx.scoped ? length : start;
   const now = ctx.now ?? new Date();
   const allNames = ctx.allFileNames ?? ctx.files.map((f) => f.name);
 
   const values = (): Record<string, string> => ({
-    before_cursor: ctx.text.slice(0, start),
-    before_last_word: textBeforeLastWord(ctx.text, start),
-    current_paragraph: paragraphAt(ctx.text, start),
-    after_cursor: ctx.text.slice(end),
+    before_cursor: ctx.scoped ? ctx.text : ctx.text.slice(0, start),
+    before_last_word: textBeforeLastWord(ctx.text, cursor),
+    current_paragraph: paragraphAt(ctx.text, cursor),
+    after_cursor: ctx.scoped ? '' : ctx.text.slice(end),
     full_text: ctx.text,
-    selection: ctx.text.slice(start, end),
+    selection: ctx.scoped ? ctx.text : ctx.text.slice(start, end),
     document_title: ctx.documentTitle,
     nudger_name: ctx.nudgerName,
     date: dateStamp(now.getTime()),

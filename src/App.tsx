@@ -26,7 +26,8 @@ import { createAutoRunTrigger } from './lib/autoRunTrigger';
 import { effectiveCustomHeaders, getProviderPreset } from './lib/providers';
 import { clearApiKey, loadApiKey, saveApiKey } from './lib/keyStore';
 import { blankTemplate, nudgerFromTemplate, templateFromNudger } from './lib/starters';
-import { dismissStartsNewNudge } from './lib/replies';
+import { collectAvoid } from './lib/replies';
+import { selectionScope } from './lib/scope';
 import { downloadText, slugify } from './lib/util';
 import { exportFileName } from './lib/exportImport';
 import { Sidebar } from './components/Sidebar';
@@ -128,6 +129,12 @@ export default function App() {
     () => scopedFiles.filter((file) => !file.nudgerId),
     [scopedFiles],
   );
+  // What a deliberate run would read: the selected passage when there is one,
+  // otherwise the whole draft. The board notice and the preview use this.
+  const activeScope = useMemo(
+    () => (activeDoc ? selectionScope(draft.text, caret) : null),
+    [activeDoc, draft.text, caret],
+  );
   const nudgersRef = useRef<Nudger[]>([]);
   // Auto-run, Run all, ordering and the board only ever see this document's
   // nudgers. The unscoped list is kept for the sidebar and exports.
@@ -146,7 +153,22 @@ export default function App() {
   const managerRef = useRef<RunManager | null>(null);
   if (!managerRef.current) {
     managerRef.current = new RunManager({
-      execute: async (job, handlers) => (await executeRun(job, handlers, (input) => store.addReply(input))).reply,
+      execute: async (job, handlers) => {
+        const name =
+          nudgersRef.current.find((nudger) => nudger.id === job.prepared.nudgerId)?.name ?? 'Nudger';
+        const outcome = await executeRun(job, handlers, (input) => store.addReply(input));
+        if (outcome.kind === 'reply') {
+          if (outcome.reply.status === 'dismissed') {
+            notifyRef.current(
+              `${name}: raised a nudge you dismissed again, so it stayed in History.`,
+              'info',
+            );
+          }
+          return outcome.reply;
+        }
+        notifyRef.current(`${name}: nothing new to flag.`, 'info');
+        return null;
+      },
       onStates: setRunStates,
       onError: (state) => {
         const name = nudgersRef.current.find((nudger) => nudger.id === state.nudgerId)?.name ?? 'Nudger';
@@ -247,6 +269,24 @@ export default function App() {
     return result !== 'duplicate';
   };
 
+  /**
+   * The document/caret snapshot for one run. A manual run honours a text
+   * selection, so the nudgers read only that passage; auto-run fires unattended
+   * and always reads the whole draft.
+   */
+  const runInput = (honourSelection: boolean) => {
+    const doc = activeDocRef.current;
+    if (!doc) return null;
+    const text = textRef.current;
+    const scope = honourSelection ? selectionScope(text, caretRef.current) : null;
+    return {
+      document: { id: doc.id, title: doc.title, currentText: scope ? scope.text : text },
+      caret: scope ? scope.caret : caretRef.current,
+      selectionScoped: Boolean(scope),
+      scope,
+    };
+  };
+
   async function runNudger(
     nudger: Nudger,
     options: { source: 'manual' | 'auto'; force?: boolean; trim?: boolean },
@@ -277,13 +317,18 @@ export default function App() {
       return;
     }
 
+    const input = runInput(manual);
+    if (!input) return;
+
     const prepared = prepareRun({
       nudger,
-      document: { id: doc.id, title: doc.title, currentText: textRef.current },
-      caret: caretRef.current,
+      document: input.document,
+      caret: input.caret,
       files: filesRef.current,
       settings: cfg,
       trimToLimit: options.trim,
+      avoid: collectAvoid(repliesRef.current, nudger.id),
+      selectionScoped: input.selectionScoped,
     });
 
     if (prepared.blocking || (prepared.overLimit && !options.force)) {
@@ -328,14 +373,19 @@ export default function App() {
     }
     const blocked: Nudger[] = [];
     let started = 0;
+    // Run all is deliberate, so a text selection scopes it to that passage.
+    const input = runInput(true);
+    if (!input) return;
     for (const nudger of eligible) {
       if (manager.isBusy(nudger.id)) continue;
       const prepared = prepareRun({
         nudger,
-        document: { id: doc.id, title: doc.title, currentText: textRef.current },
-        caret: caretRef.current,
+        document: input.document,
+        caret: input.caret,
         files: filesRef.current,
         settings: cfg,
+        avoid: collectAvoid(repliesRef.current, nudger.id),
+        selectionScoped: input.selectionScoped,
       });
       if (prepared.blocking || prepared.overLimit) {
         blocked.push(nudger);
@@ -759,14 +809,15 @@ export default function App() {
       notify(describeStorageError(error), 'error');
       return;
     }
-    // Dismissing the nudge on the card asks for the next one: start a fresh run
-    // right away instead of leaving the writer to press Run. Dismissing an
-    // older reply is triage and starts nothing. The allowance gates unattended
-    // auto-run only, so this deliberate dismissal is not refused.
-    if (status !== 'dismissed') return;
-    if (!dismissStartsNewNudge(repliesRef.current, reply)) return;
-    const nudger = nudgersRef.current.find((item) => item.id === reply.nudgerId);
-    if (nudger) void runNudgerRef.current(nudger, { source: 'auto' });
+    // A dismissal means "do not raise that again", never "say it again": it
+    // now feeds the do-not-raise list of the next run instead of starting one.
+    // Running again stays an explicit action (Run, or Run again on a reply).
+    const name = nudgersRef.current.find((nudger) => nudger.id === reply.nudgerId)?.name ?? 'This nudger';
+    if (status === 'dismissed') {
+      notify(`Dismissed. ${name} will not raise it again.`, 'info');
+    } else if (status === 'new' && reply.status === 'dismissed') {
+      notify(`${name} may raise it again.`, 'info');
+    }
   };
 
   const saveSettings = async (patch: Partial<Settings>) => {
@@ -936,6 +987,7 @@ export default function App() {
               replies={replyList}
               templates={templates}
               runStates={runStates}
+              selectionWords={activeScope?.words ?? 0}
               focusedNudgerId={focusedNudgerId}
               onFocusNudger={setFocusedNudgerId}
               onRunNudger={(nudger) => void runNudger(nudger, { source: 'manual' })}
@@ -998,10 +1050,16 @@ export default function App() {
       {previewNudger && activeDoc ? (
         <PromptPreview
           nudger={previewNudger}
-          document={{ id: activeDoc.id, title: activeDoc.title, currentText: draft.text }}
-          caret={caret}
+          document={{
+            id: activeDoc.id,
+            title: activeDoc.title,
+            currentText: activeScope ? activeScope.text : draft.text,
+          }}
+          caret={activeScope ? activeScope.caret : caret}
           files={scopedFiles}
           settings={settings}
+          avoid={collectAvoid(repliesRef.current, previewNudger.id)}
+          selectionScoped={Boolean(activeScope)}
           hasKey={hasKey}
           onClose={() => setPreviewNudgerId(null)}
           onRun={(options) => {

@@ -9,6 +9,8 @@ type NudgerBoardProps = {
   templates: Template[];
   runStates: Record<string, RunState>;
   documentId: string;
+  /** Words in the draft column's selection; 0 when nothing is selected. */
+  selectionWords: number;
   focusedNudgerId: string | null;
   hasKey: boolean;
   onFocusNudger: (id: string) => void;
@@ -53,7 +55,11 @@ export function NudgerBoard(props: NudgerBoardProps) {
             className="btn btn-sm"
             onClick={props.onRunAll}
             disabled={nudgers.length === 0}
-            title="Run all enabled nudgers (Ctrl+Shift+Enter)"
+            title={
+              props.selectionWords > 0
+                ? 'Run all enabled nudgers on your selection (Ctrl+Shift+Enter)'
+                : 'Run all enabled nudgers (Ctrl+Shift+Enter)'
+            }
           >
             Run all
           </button>
@@ -62,6 +68,14 @@ export function NudgerBoard(props: NudgerBoardProps) {
           </button>
         </div>
       </header>
+
+      {props.selectionWords > 0 ? (
+        <p className="board-scope" role="status">
+          {`Running reads your selection (${props.selectionWords.toLocaleString()} ${
+            props.selectionWords === 1 ? 'word' : 'words'
+          }), not the whole draft. Clear the selection to read everything.`}
+        </p>
+      ) : null}
 
       {nudgers.length === 0 ? (
         <div className="empty-board">

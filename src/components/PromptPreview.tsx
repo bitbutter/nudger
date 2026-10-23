@@ -11,6 +11,10 @@ type PromptPreviewProps = {
   caret: Caret;
   files: ReferenceFile[];
   settings: Settings;
+  /** Rejected nudges for this nudger, so the preview matches the real request. */
+  avoid?: string[];
+  /** True when the draft column's selection is the scope of this run. */
+  selectionScoped?: boolean;
   hasKey: boolean;
   onClose: () => void;
   onRun: (options: { force?: boolean; trim?: boolean }) => void;
@@ -22,6 +26,8 @@ export function PromptPreview({
   caret,
   files,
   settings,
+  avoid,
+  selectionScoped,
   hasKey,
   onClose,
   onRun,
@@ -37,8 +43,10 @@ export function PromptPreview({
         files,
         settings,
         trimToLimit: trim,
+        avoid,
+        selectionScoped,
       }),
-    [nudger, document, caret, files, settings, trim],
+    [nudger, document, caret, files, settings, trim, avoid, selectionScoped],
   );
 
   const copy = async (text: string, label: string) => {

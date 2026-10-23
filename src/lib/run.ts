@@ -8,6 +8,7 @@ import {
   type TemplateIssue,
 } from './placeholders';
 import { appendFilesSection, textContainsFile } from './referenceFiles';
+import { AVOID_LIMIT, nudgeKey } from './replies';
 import { estimateTokens } from './util';
 import {
   buildFactsInstruction,
@@ -24,6 +25,17 @@ export type PrepareOptions = {
   settings: Settings;
   /** When true, trim the prompt to the character limit instead of only warning. */
   trimToLimit?: boolean;
+  /**
+   * True when `document.currentText` is a selected passage rather than the whole
+   * draft. Placeholder resolution and the system prompt both follow it.
+   */
+  selectionScoped?: boolean;
+  /**
+   * Nudges this writer already dismissed for this nudger (see `collectAvoid`).
+   * They are sent with the request so a dismissal suppresses the point instead
+   * of producing it again.
+   */
+  avoid?: string[];
 };
 
 export type PreparedRun = {
@@ -52,6 +64,12 @@ export type PreparedRun = {
   /** When true, the model returns {"reply": "...", "facts": [...]} in one response. */
   facts: boolean;
   factsPrompt: string;
+  /** Rejected nudges actually sent with this request. Empty when there are none. */
+  avoid: string[];
+  /** True when the model may answer with `NUDGE_PASS_TOKEN` instead of a nudge. */
+  passAllowed: boolean;
+  /** True when this run reads a selected passage instead of the whole draft. */
+  selectionScoped: boolean;
 };
 
 export function formatResolvedPrompt(system: string, user: string): string {
@@ -65,6 +83,56 @@ export function formatResolvedPrompt(system: string, user: string): string {
  */
 export const REPLY_LENGTH_RULE =
   'Keep the reply to at most two short sentences. No preamble, no lists, no headings, and do not restate the draft.';
+
+/**
+ * Sent only when the run reads a selection. A model handed part of a document
+ * otherwise spends the nudge pointing out that the rest of it is missing.
+ */
+export const SELECTION_SCOPE_RULE =
+  'The writer selected one passage of a longer draft, and this run reads only that passage. Respond to the passage as it stands; do not ask for or complain about the rest of the document.';
+
+/**
+ * The single token a nudger may return instead of a nudge once the writer has
+ * rejected earlier ones. Staying quiet is the honest answer when the draft
+ * leaves nothing new to raise, and it beats inventing a weaker nudge.
+ */
+export const NUDGE_PASS_TOKEN = 'NOTHING NEW';
+
+/**
+ * The do-not-raise block. Sent only when this nudger has rejected nudges, and
+ * it carries the pass token, so a nudger that never had a dismissal behaves
+ * exactly as before.
+ */
+export function buildAvoidInstruction(avoid: string[]): string {
+  if (avoid.length === 0) return '';
+  return [
+    'REJECTED NUDGES',
+    'The writer already saw these nudges for this document and dismissed them. Do not repeat them and do not rephrase them into a close variant.',
+    ...avoid.map((text) => `- ${text}`),
+    `Raise one of them again only if the draft has changed in a way that makes it newly true, and then say what changed. If nothing worth raising is left, do not invent a weaker nudge: return exactly ${NUDGE_PASS_TOKEN} and nothing else.`,
+  ].join('\n');
+}
+
+/** True when a response is the pass token rather than a nudge. */
+export function isPassResponse(text: string): boolean {
+  const normalized = text
+    .replace(/[^a-z ]/gi, '')
+    .trim()
+    .replace(/\s+/g, ' ')
+    .toUpperCase();
+  return normalized === NUDGE_PASS_TOKEN;
+}
+
+/**
+ * True when the new nudge is literally one the writer already dismissed. The
+ * prompt asks the model not to repeat a rejection; this catches the case where
+ * it does anyway, so the point never comes back to the card.
+ */
+export function repeatsRejected(avoid: string[], text: string): boolean {
+  const candidate = nudgeKey(text);
+  if (!candidate) return false;
+  return avoid.some((entry) => nudgeKey(entry) === candidate);
+}
 
 function truncationMarker(limit: number): string {
   return `\n\n[TRUNCATED BY NUDGER: this prompt was trimmed to stay under the ${limit.toLocaleString()} character limit. The text after this marker was not sent. The request preview shows exactly what is sent.]`;
@@ -116,6 +184,7 @@ export function prepareRun(options: PrepareOptions): PreparedRun {
     text: document.currentText,
     selectionStart: caret.start,
     selectionEnd: caret.end,
+    scoped: options.selectionScoped === true,
     documentTitle: document.title,
     nudgerName: nudger.name,
     files: selected,
@@ -172,18 +241,31 @@ export function prepareRun(options: PrepareOptions): PreparedRun {
   const maxContextChars = Math.max(1_000, nudger.maxContextChars || settings.maxContextChars);
   const facts = nudger.facts === true;
   const factsPrompt = (nudger.factsPrompt || '').trim() || GENERIC_FACTS_FOCUS;
+  // The do-not-raise list also turns on the pass token: a nudger that was never
+  // dismissed for this document keeps its old behaviour exactly.
+  const avoid = (options.avoid ?? [])
+    .map((text) => text.replace(/\s+/g, ' ').trim())
+    .filter(Boolean)
+    .slice(0, AVOID_LIMIT);
+  const avoidInstruction = buildAvoidInstruction(avoid);
+  const selectionScoped = options.selectionScoped === true;
+  const scopeRule = selectionScoped ? SELECTION_SCOPE_RULE : '';
   // The fact protocol is appended after the nudger's own system text. It is a
   // fixed cost that trimming must preserve; only the base system is shortened.
   const factsProtocol = facts ? buildFactsInstruction(factsPrompt) : '';
   let baseSystem = systemResolution.text;
-  const withFactsProtocol = () =>
-    [baseSystem.trim(), REPLY_LENGTH_RULE, factsProtocol].filter(Boolean).join('\n\n');
-  let system = withFactsProtocol();
+  const withFixedRules = () =>
+    [baseSystem.trim(), REPLY_LENGTH_RULE, scopeRule, avoidInstruction, factsProtocol]
+      .filter(Boolean)
+      .join('\n\n');
+  let system = withFixedRules();
   let overLimit = system.length + prompt.length > maxContextChars;
   let trimmed = false;
   if (overLimit && options.trimToLimit) {
-    const reserved =
-      REPLY_LENGTH_RULE.length + 2 + (factsProtocol ? factsProtocol.length + 2 : 0);
+    const reserved = [REPLY_LENGTH_RULE, scopeRule, avoidInstruction, factsProtocol].reduce(
+      (total, part) => (part ? total + part.length + 2 : total),
+      0,
+    );
     const budget = maxContextChars - reserved;
     // If the protocol alone exceeds the budget there is nothing meaningful to
     // trim to; leave the request as is and keep reporting the over-limit state.
@@ -193,7 +275,7 @@ export function prepareRun(options: PrepareOptions): PreparedRun {
       prompt = next.prompt;
       trimmed = true;
     }
-    system = withFactsProtocol();
+    system = withFixedRules();
     overLimit = system.length + prompt.length > maxContextChars;
   }
 
@@ -229,6 +311,9 @@ export function prepareRun(options: PrepareOptions): PreparedRun {
     hadFilePlaceholder,
     facts,
     factsPrompt,
+    avoid,
+    passAllowed: avoid.length > 0,
+    selectionScoped,
   };
 }
 
@@ -269,11 +354,16 @@ function delay(ms: number, signal: AbortSignal): Promise<void> {
   });
 }
 
+export type RunOutcome =
+  | { kind: 'reply'; reply: Reply; usage?: ModelUsage; latencyMs: number }
+  /** The model had nothing new to raise and returned the pass token. */
+  | { kind: 'quiet'; latencyMs: number };
+
 export async function executeRun(
   job: RunJob,
   handlers: RunHandlers,
   saveReply: SaveReply,
-): Promise<{ reply: Reply; usage?: ModelUsage; latencyMs: number }> {
+): Promise<RunOutcome> {
   const { prepared } = job;
   const started = Date.now();
   let lastError: NudgeError | null = null;
@@ -308,12 +398,22 @@ export async function executeRun(
         );
       }
 
+      // Staying quiet is a valid result, not an empty response: nothing is
+      // saved, so no weaker nudge is invented merely to fill the card.
+      if (prepared.passAllowed && isPassResponse(parsed.text)) {
+        return { kind: 'quiet', latencyMs: Date.now() - started };
+      }
+
       let reply: Reply;
+      // A repeat of a rejected point is stored, but stored as dismissed, so it
+      // stays in History instead of returning to the card.
+      const suppressed = repeatsRejected(prepared.avoid, parsed.text);
       try {
         reply = await saveReply({
           documentId: prepared.documentId,
           nudgerId: prepared.nudgerId,
           text: parsed.text,
+          status: suppressed ? 'dismissed' : undefined,
           resolvedPrompt: prepared.fullPrompt,
           fileIds: prepared.fileIds,
           model: prepared.resolved.model,
@@ -326,7 +426,7 @@ export async function executeRun(
         const detail = error instanceof Error ? error.message : String(error);
         throw new NudgeError('storage', `The reply arrived but could not be saved: ${detail}`);
       }
-      return { reply, usage: result.usage, latencyMs: Date.now() - started };
+      return { kind: 'reply', reply, usage: result.usage, latencyMs: Date.now() - started };
     } catch (error) {
       const nudgeError = asNudgeError(error);
       lastError = nudgeError;

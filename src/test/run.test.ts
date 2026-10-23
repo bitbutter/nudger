@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { executeRun, prepareRun, REPLY_LENGTH_RULE } from '../lib/run';
+import { executeRun, prepareRun, NUDGE_PASS_TOKEN, REPLY_LENGTH_RULE } from '../lib/run';
 import { makeStore, newNudgerInput, testSettings } from './helpers';
 import type { PreparedRun } from '../lib/run';
 
@@ -26,7 +26,7 @@ function openAiReply(text: string): Response {
   });
 }
 
-async function runPrepared(
+async function runPreparedOutcome(
   store: Awaited<ReturnType<typeof freshStore>>,
   prepared: PreparedRun,
   apiKey = 'test-key',
@@ -37,6 +37,17 @@ async function runPrepared(
     { signal: controller.signal },
     async (input) => store.addReply(input),
   );
+}
+
+/** The common case: assert the run produced a reply and hand it back. */
+async function runPrepared(
+  store: Awaited<ReturnType<typeof freshStore>>,
+  prepared: PreparedRun,
+  apiKey = 'test-key',
+) {
+  const outcome = await runPreparedOutcome(store, prepared, apiKey);
+  if (outcome.kind !== 'reply') throw new Error('expected a reply, got a quiet run');
+  return outcome.reply;
 }
 
 describe('mocked nudger run', () => {
@@ -66,7 +77,7 @@ describe('mocked nudger run', () => {
     const fetchMock = vi.fn(async () => openAiReply('Which request count should the letter name?'));
     vi.stubGlobal('fetch', fetchMock);
 
-    const { reply } = await runPrepared(store, prepared);
+    const reply = await runPrepared(store, prepared);
     expect(reply.text).toBe('Which request count should the letter name?');
     expect(reply.resolvedPrompt).toContain('REFERENCE FILE: notes.md');
     expect(reply.resolvedPrompt).toContain('Dear team, I built a thing.');
@@ -115,7 +126,7 @@ describe('mocked nudger run', () => {
     });
     vi.stubGlobal('fetch', fetchMock);
 
-    const { reply } = await runPrepared(store, prepared);
+    const reply = await runPrepared(store, prepared);
     expect(fetchMock).toHaveBeenCalledTimes(1);
     expect(reply.text).toBe('Which request count should the letter name?');
     expect(reply.facts).toEqual(['1.2 million requests (notes.md)']);
@@ -136,7 +147,7 @@ describe('mocked nudger run', () => {
       settings: testSettings,
     });
     vi.stubGlobal('fetch', vi.fn(async () => openAiReply('A useful nudge.')));
-    const { reply } = await runPrepared(store, prepared);
+    const reply = await runPrepared(store, prepared);
     expect(reply.text).toBe('A useful nudge.');
     expect(reply.facts).toBeUndefined();
     expect(reply.factsError).toMatch(/plain reply/i);
@@ -173,7 +184,7 @@ describe('mocked nudger run', () => {
       settings: testSettings,
     });
     vi.stubGlobal('fetch', vi.fn(async () => openAiReply('{"reply":"A cut-off nudge')));
-    const { reply } = await runPrepared(store, prepared);
+    const reply = await runPrepared(store, prepared);
     expect(reply.text).toBe('A cut-off nudge');
     expect(reply.factsError).toMatch(/cut off/i);
     expect(await store.listReplies(doc.id)).toHaveLength(1);
@@ -256,7 +267,7 @@ describe('mocked nudger run', () => {
 
     const retries: number[] = [];
     const controller = new AbortController();
-    const { reply } = await executeRun(
+    const outcome = await executeRun(
       { prepared, apiKey: 'k', timeoutMs: 5000, maxRetries: 1 },
       {
         signal: controller.signal,
@@ -264,9 +275,10 @@ describe('mocked nudger run', () => {
       },
       async (input) => store.addReply(input),
       );
+    if (outcome.kind !== 'reply') throw new Error('expected a reply after the retry');
     expect(calls).toBe(2);
     expect(retries).toEqual([2]);
-    expect(reply.text).toBe('After the wait');
+    expect(outcome.reply.text).toBe('After the wait');
   });
 
   it('can be cancelled without saving a reply', async () => {
@@ -300,5 +312,148 @@ describe('mocked nudger run', () => {
     setTimeout(() => controller.abort(), 20);
     await expect(running).rejects.toMatchObject({ kind: 'cancelled' });
     expect(await store.listReplies(doc.id)).toHaveLength(0);
+  });
+});
+
+describe('rejected nudges and staying quiet', () => {
+  it('sends the do-not-raise block only when there is something to avoid', async () => {
+    const store = await freshStore();
+    const doc = await store.createDocument('Cover letter', 'Dear team.');
+    const nudger = await store.createNudger(newNudgerInput({ documentId: doc.id }));
+    const base = {
+      nudger,
+      document: doc,
+      caret: { start: 0, end: 0 },
+      files: [],
+      settings: testSettings,
+    };
+
+    const plain = prepareRun(base);
+    expect(plain.avoid).toEqual([]);
+    expect(plain.passAllowed).toBe(false);
+    expect(plain.system).not.toContain('REJECTED NUDGES');
+    expect(plain.system).not.toContain(NUDGE_PASS_TOKEN);
+
+    const withAvoid = prepareRun({ ...base, avoid: ['Name the request count, not the cost.'] });
+    expect(withAvoid.passAllowed).toBe(true);
+    expect(withAvoid.system).toContain('REJECTED NUDGES');
+    expect(withAvoid.system).toContain('- Name the request count, not the cost.');
+    expect(withAvoid.system).toContain(NUDGE_PASS_TOKEN);
+    expect(withAvoid.fullPrompt).toContain('Name the request count, not the cost.');
+    // The fixed rules survive trimming, which only shortens the base system.
+    expect(withAvoid.system.indexOf(REPLY_LENGTH_RULE)).toBeLessThan(
+      withAvoid.system.indexOf('REJECTED NUDGES'),
+    );
+  });
+
+  it('keeps the block and the pass token when the prompt is trimmed', async () => {
+    const store = await freshStore();
+    const doc = await store.createDocument('Essay', 'x'.repeat(4000));
+    const nudger = await store.createNudger(
+      newNudgerInput({ documentId: doc.id, maxContextChars: 1200 }),
+    );
+    const prepared = prepareRun({
+      nudger,
+      document: doc,
+      caret: { start: 4000, end: 4000 },
+      files: [],
+      settings: testSettings,
+      trimToLimit: true,
+      avoid: ['Ask for the thesis, not the title.'],
+    });
+    expect(prepared.trimmed).toBe(true);
+    expect(prepared.system).toContain('REJECTED NUDGES');
+    expect(prepared.system).toContain('Ask for the thesis, not the title.');
+  });
+
+  it('saves nothing when the model returns the pass token', async () => {
+    const store = await freshStore();
+    const doc = await store.createDocument('Cover letter', 'Dear team.');
+    const nudger = await store.createNudger(newNudgerInput({ documentId: doc.id }));
+    const prepared = prepareRun({
+      nudger,
+      document: doc,
+      caret: { start: 0, end: 0 },
+      files: [],
+      settings: testSettings,
+      avoid: ['Name the request count.'],
+    });
+    vi.stubGlobal('fetch', vi.fn(async () => openAiReply('  NOTHING NEW. ')));
+    const outcome = await runPreparedOutcome(store, prepared);
+    expect(outcome.kind).toBe('quiet');
+    expect(await store.listReplies(doc.id)).toHaveLength(0);
+  });
+
+  it('honours the pass token in the structured facts response too', async () => {
+    const store = await freshStore();
+    const doc = await store.createDocument('Cover letter', 'Dear team.');
+    const nudger = await store.createNudger(
+      newNudgerInput({ documentId: doc.id, facts: true }),
+    );
+    const prepared = prepareRun({
+      nudger,
+      document: doc,
+      caret: { start: 0, end: 0 },
+      files: [],
+      settings: testSettings,
+      avoid: ['Name the request count.'],
+    });
+    vi.stubGlobal('fetch', vi.fn(async () => openAiReply('{"reply":"NOTHING NEW","facts":[]}')));
+    const outcome = await runPreparedOutcome(store, prepared);
+    expect(outcome.kind).toBe('quiet');
+    expect(await store.listReplies(doc.id)).toHaveLength(0);
+  });
+
+  it('never offers the pass token to a nudger without rejections', async () => {
+    const store = await freshStore();
+    const doc = await store.createDocument('Cover letter', 'Dear team.');
+    const nudger = await store.createNudger(newNudgerInput({ documentId: doc.id }));
+    const prepared = prepareRun({
+      nudger,
+      document: doc,
+      caret: { start: 0, end: 0 },
+      files: [],
+      settings: testSettings,
+    });
+    vi.stubGlobal('fetch', vi.fn(async () => openAiReply('NOTHING NEW')));
+    const reply = await runPrepared(store, prepared);
+    expect(reply.text).toBe('NOTHING NEW');
+  });
+
+  it('stores a repeated rejection as dismissed so it stays off the card', async () => {
+    const store = await freshStore();
+    const doc = await store.createDocument('Cover letter', 'Dear team.');
+    const nudger = await store.createNudger(newNudgerInput({ documentId: doc.id }));
+    const prepared = prepareRun({
+      nudger,
+      document: doc,
+      caret: { start: 0, end: 0 },
+      files: [],
+      settings: testSettings,
+      avoid: ['Name the request count, not the cost.'],
+    });
+    vi.stubGlobal('fetch', vi.fn(async () => openAiReply('name the request count, not the cost')));
+    const reply = await runPrepared(store, prepared);
+    expect(reply.status).toBe('dismissed');
+    const stored = await store.listReplies(doc.id);
+    expect(stored).toHaveLength(1);
+    expect(stored[0].status).toBe('dismissed');
+  });
+
+  it('keeps a differently worded nudge on the card', async () => {
+    const store = await freshStore();
+    const doc = await store.createDocument('Cover letter', 'Dear team.');
+    const nudger = await store.createNudger(newNudgerInput({ documentId: doc.id }));
+    const prepared = prepareRun({
+      nudger,
+      document: doc,
+      caret: { start: 0, end: 0 },
+      files: [],
+      settings: testSettings,
+      avoid: ['Name the request count, not the cost.'],
+    });
+    vi.stubGlobal('fetch', vi.fn(async () => openAiReply('Which customer is this letter for?')));
+    const reply = await runPrepared(store, prepared);
+    expect(reply.status).toBe('new');
   });
 });

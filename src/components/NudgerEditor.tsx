@@ -355,6 +355,10 @@ export function NudgerEditor({
 
           <details className="placeholder-help" open>
             <summary>Available placeholders</summary>
+            <p className="placeholder-note">
+              With text selected in the draft, a run reads only that selection: every context
+              placeholder below then refers to the selection.
+            </p>
             <div className="placeholder-table">
               {CONTEXT_PLACEHOLDERS.map((name) => (
                 <div key={name}>

@@ -8,6 +8,8 @@ A nudger never writes into your document. It returns plain text. You copy what h
 - Documents, versions, nudger-owned files, nudgers, replies and settings live in IndexedDB.
 - Your API key stays in this browser. Keys are never stored in IndexedDB, exported, or logged.
 - Text leaves the browser only when you run a nudger, and the resolved-prompt preview shows exactly what will be sent.
+- Select a passage in the draft and a run reads only that passage: **Run all** (and Run on a single card) then answers about exactly what you selected.
+- Dismissing a nudge means **do not raise that again**. The rejected point is remembered for that nudger and sent with the next request, so a dismissal stops a point instead of repeating it.
 - Default provider: **DeepSeek** pay-as-you-go (`deepseek-flash`), which allows direct browser requests. OpenAI, Anthropic, OpenRouter, Groq, Mistral and custom OpenAI-compatible endpoints are also supported.
 
 Published at: **https://bitbutter.github.io/nudger/** (GitHub Pages).
@@ -60,7 +62,17 @@ Replies are plain text with preserved line breaks. They are never inserted into 
 
 A nudge is a short interruption, not an essay. Every run appends one fixed rule to the system prompt (`REPLY_LENGTH_RULE` in `src/lib/run.ts`): at most two short sentences, no preamble, no lists, no headings, no restating the draft. It applies to custom nudgers too, and the resolved-prompt preview shows it.
 
-Reply statuses: `new`, `pinned`, `dismissed`, `archived`. The card only ever shows its **newest** reply: when that one is dismissed or archived the card says so and offers **Run**, rather than falling back to an older nudge that would read as current advice. Actions: copy, pin/unpin, dismiss/undismiss, archive/unarchive, retry, clear history.
+Reply statuses: `new`, `pinned`, `dismissed`, `archived`. The card only ever shows its **newest** reply: when that one is dismissed or archived the card says so rather than falling back to an older nudge that would read as current advice. Actions: copy, pin/unpin, don’t raise this again / allow again, archive/unarchive, run again, clear history.
+
+### Don’t raise this again
+
+Dismissing is a rejection of the **point**, not a request for another attempt. Nothing is deleted: the reply moves into **History**, still readable and copyable, and it starts coming back only when you allow it again.
+
+- **The point is remembered.** The dismissed nudges of one nudger (up to five, each clipped, forgotten after a week) are listed in a `REJECTED NUDGES` block in the next request, with the instruction not to repeat them or rephrase them into a close variant. The block is added at run time like the length rule, and the preview on a card shows it.
+- **Asking for another nudge is explicit.** **Run** and **Run again** do that; a dismissal never starts a run. Auto-run keeps working as before, so a dismissed point is left alone while the nudger is free to raise something else.
+- **Staying quiet beats padding.** Once a nudger has rejections, it may answer with the single token `NOTHING NEW` instead of a nudge. Nothing is saved, the card says **Nothing new to flag**, and the run does not manufacture a weaker version of a rejected point. A nudger with no rejections is never offered that option, so its behaviour is unchanged.
+- **A literal repeat never reaches the card.** If a run produces a nudge that is the same as a dismissed one (ignoring case, punctuation and spacing), it is stored as dismissed: it stays in History, the card keeps saying the point will not be raised, and a toast names what happened. Close paraphrases are the prompt block’s job; this guard only catches an exact repeat.
+- **Reversible and per nudger.** **Allow again** removes the point from the list immediately; dismissing a reply in History counts exactly like dismissing the one on the card. Another nudger in the same document is unaffected.
 
 ### Supporting Facts
 
@@ -82,7 +94,7 @@ The fact protocol adds roughly 300 tokens to the system prompt. Turning it off r
 - **Done** stops all generation for that nudger until reopened.
 - **Auto-run is a plain on/off switch.** The card has an **auto** button next to **Run**; its dot and accent border mean on. Auto-run is **on by default** for nudgers you create, and imported nudgers still start with it off (see import safety). There is no reply allowance: an auto nudger runs after every typing pause until you switch it off, and **Run** always works.
 - **Auto-run** fires once after the typing cooldown (about 1.5 s, configurable in Settings) **and** a mouse or pointer movement after the last keystroke — a mouse resting on the page never triggers a run. It only considers the current document's nudgers, and never runs while the document is empty, while the nudger is done or disabled, or while a modal is open. If the nudger is busy when it should fire, nudger waits for it to finish and then runs the latest draft once.
-- **Dismissing the nudge on the card starts the next run.** A dismissal is a deliberate "not this one, try again", so it runs even if auto is off; the dismissed reply stays in **History** where it can be undismissed. Dismissing an older reply from **History** is triage only and starts nothing. Duplicating a nudger or a document copies the source's auto-run setting.
+- **Dismissing a reply means “do not raise that again”.** The point goes into that nudger’s do-not-raise list, the next run is told to avoid it, and the card says so. A dismissal never starts a run; **Run** and **Run again** are the explicit ask for another nudge, and they run whether or not **auto** is on. Duplicating a nudger or a document copies the source’s auto-run setting.
 - At most one request per nudger is in flight. A global queue limits concurrent calls (default 2, configurable 1–8). Over-limit jobs wait.
 - Rate-limit (429) and 5xx responses are retried automatically up to two times with backoff when the provider's wait is 15 s or less. Longer waits are surfaced with the provider's message instead of hanging the card.
 - Failed attempts are shown in the card with the provider's message and an actionable hint. They are not saved as replies.
@@ -108,6 +120,16 @@ Placeholders resolve **when you run the nudger**, not when the prompt is saved. 
 | `{{file:notes.md}}` | One attached file by exact name (matched case-insensitively). A missing or unattached file blocks the run with a clear error. |
 
 **Why `before_cursor` and `after_cursor` use different edges:** `before_cursor` ends at `selectionStart`; `after_cursor` starts at `selectionEnd`. Together with `{{selection}}` they reconstruct the full text without duplicating the selection.
+
+### Running on a selection
+
+Select text in the draft and a deliberate run reads **only that passage**: the document text sent to the nudger is the selection, so **Run all**, **Run**, **Run again** and the prompt preview all describe that span alone. The board says when a selection is in scope (`Running reads your selection (24 words), not the whole draft`), because the highlight can stop being visible once you click a button outside the editor.
+
+- **Every context placeholder follows the selection.** The passage is the whole text of that run: `{{before_cursor}}` and `{{full_text}}` are the passage, `{{selection}}` is the passage, `{{current_paragraph}}` is its last paragraph, and `{{after_cursor}}` is empty because nothing after the passage is sent. The cursor is treated as being at the end of the passage, so a selection dragged backwards behaves like one dragged forwards.
+- **The model is told.** `SELECTION_SCOPE_RULE` adds one line to the system prompt: respond to the passage as it stands, do not complain about the rest of the document.
+- **Auto-run stays on the whole draft.** It fires unattended from typing and a mouse movement, so it never silently narrows to a selection. Selecting text and then pressing **Run all** is the deliberate equivalent.
+- **Clearing the selection** (click in the draft, or collapse it) puts the next run back on the whole document. A whitespace-only selection is not a scope; it would send an empty draft.
+- **Reference files are unaffected.** A scoped run still sends the nudger's attached files; only the draft text narrows.
 
 ### File insertion rules
 
@@ -351,21 +373,24 @@ The API key is not part of persisted `Settings`. IndexedDB tables: `documents`, 
 21. **Fact clues are per nudger and selectively on**, not a document-wide panel. The three fact-oriented starters enable them; the rest and custom nudgers start off, and every nudger can toggle them. A document-wide list would be generic, duplicate work, and ignore each nudger's reference files.
 22. **Fact clues share the nudge response** as one JSON object (`reply` + `facts`), not a second extraction request. The prompt protocol is validated locally, tolerates fences/prose, falls back to the plain reply, and refuses malformed JSON rather than showing raw data. This keeps cost and latency at one call while giving structured facts. The tradeoff is that a model can ignore the JSON protocol; the reply is then kept and the missing list is reported.
 23. **Facts are clues, not verified facts.** They are stored per reply, labeled “model-generated; verify”, and never inserted into the draft. A dedicated Fact checker nudger remains the route for a deeper verification pass.
-24. **Dismissing the nudge on the card starts the next run; dismissing a history entry does not.** A dismissal rejects that advice, so the card starts a fresh run instead of reaching back to an older reply, and it runs whether or not **auto** is on. Nothing is deleted: the dismissed reply moves into **History** and can be undismissed.
+24. **Dismissing a reply suppresses the point; it does not ask for another nudge.** A dismissal is “do not raise that again”, so the rejected nudges are sent with the next request and the model may stay quiet (`NOTHING NEW`) instead of inventing a weaker nudge. Running again is the explicit way to ask for something else. Nothing is deleted: the dismissed reply moves into History and **Allow again** puts the point back.
+25. **A selection scopes deliberate runs, not auto-run.** Selecting a passage and pressing **Run all** (or Run) makes every nudger read only that span, which is the narrowest thing the writer could have meant by selecting it. Auto-run deliberately ignores the selection because it fires unattended — a selection is a deliberate gesture, and the whole draft is the safe default when nobody asked for a scope. The board states which one is in force so the difference is never silent.
 
 ---
 
 ## Testing
 
-`npm test` runs 172 tests in 18 files:
+`npm test` runs 196 tests in 20 files:
 
 - placeholder resolution (`before_cursor`, `before_last_word`, paragraph, selection, case-insensitivity, unknown placeholders)
+- selection scope: empty and whitespace-only selections are ignored, backwards selections behave like forwards, stale offsets clamp, and a scoped run sends the passage with every context placeholder reading it while the scope rule survives trimming
+- the board's scope notice (absent with no selection, word count and singular/plural, the Run all tooltip)
 - reference-file insertion, wrappers, auto-append, missing/unselected files, unreferenced warnings, oversized trim, files dropped by trimming
 - non-destructive version restore and autosave behavior
 - document-bound nudgers: per-document listing and order, document duplication/deletion cascades, cross-document reply rejection, version 1 → 2 database migration, legacy export migration
 - the reference-file panel rendering inside the document page (files listed, empty state)
 - the auto-run trigger (cooldown plus pointer movement, resting mouse, single fire, cancel), the auto-run default and the two-sentence rule appended to every system prompt
-- reply selection: the card only shows its newest reply (a dismissed or archived newest reply is never replaced by an older one), and only dismissing the newest reply asks for a new nudge
+- reply selection: the card only shows its newest reply (a dismissed or archived newest reply is never replaced by an older one), a dismissal adds the point to the do-not-raise list instead of starting a run, that list is capped, clipped, aged out and per nudger, Allow again removes it, the pass token saves nothing while it is never offered to a nudger without rejections, and a literal repeat of a rejection stays in History instead of returning to the card
 - the version 7 upgrade that switches auto-run on once for nudgers stored under the old off default, and the version 8 upgrade that drops the removed auto-run allowance
 - the card's auto toggle (state, placement next to Run, turning auto-run off)
 - the version 6 upgrade that raises an untouched 700-token max-token default to the reasoning-safe 2000 and leaves chosen values alone

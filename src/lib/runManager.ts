@@ -2,7 +2,7 @@ import type { Reply } from '../types';
 import { asNudgeError, NudgeError } from './errors';
 import type { RetryInfo, RunJob } from './run';
 
-export type RunPhase = 'queued' | 'running' | 'retrying' | 'error';
+export type RunPhase = 'queued' | 'running' | 'retrying' | 'error' | 'quiet';
 
 export type RunState = {
   phase: RunPhase;
@@ -15,7 +15,7 @@ export type RunState = {
   message?: string;
 };
 
-export type ExecuteJob = (job: RunJob, handlers: { signal: AbortSignal; onRetry?: (info: RetryInfo) => void }) => Promise<Reply>;
+export type ExecuteJob = (job: RunJob, handlers: { signal: AbortSignal; onRetry?: (info: RetryInfo) => void }) => Promise<Reply | null>;
 
 type ManagerOptions = {
   execute: ExecuteJob;
@@ -134,7 +134,7 @@ export class RunManager {
 
     void (async () => {
       try {
-        await this.execute(job, {
+        const reply = await this.execute(job, {
           signal: controller.signal,
           onRetry: (info) => {
             this.setState(job.nudgerId, {
@@ -148,7 +148,18 @@ export class RunManager {
             });
           },
         });
-        this.clearState(job.nudgerId);
+        if (reply) {
+          this.clearState(job.nudgerId);
+        } else {
+          // Nothing was raised, so nothing is saved. The phase stays on the
+          // card until the next run for this nudger replaces it.
+          this.setState(job.nudgerId, {
+            phase: 'quiet',
+            nudgerId: job.nudgerId,
+            documentId: job.documentId,
+            startedAt: this.states[job.nudgerId]?.startedAt ?? Date.now(),
+          });
+        }
       } catch (error) {
         const nudgeError = asNudgeError(error);
         if (nudgeError.kind === 'cancelled') {
@@ -200,6 +211,7 @@ export function runStateMessage(state: RunState): string {
   if (state.phase === 'retrying') {
     return `${state.message ?? 'Retrying'} (attempt ${state.attempt ?? 2}, about ${Math.ceil((state.retryInMs ?? 0) / 1000)}s)`;
   }
+  if (state.phase === 'quiet') return 'Nothing new to flag';
   if (state.error) return state.error.message;
   return '';
 }

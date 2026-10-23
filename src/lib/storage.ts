@@ -616,7 +616,7 @@ export function createStore(database: NudgerDB = db) {
   }
 
   async function setReplyStatus(id: string, status: ReplyStatus): Promise<void> {
-    await replies.update(id, { status });
+    await replies.update(id, { status, statusChangedAt: Date.now() });
   }
 
   async function deleteReply(id: string): Promise<void> {

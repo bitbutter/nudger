@@ -47,6 +47,8 @@ type DocumentViewProps = {
   files: ReferenceFile[];
   replies: Reply[];
   runStates: Record<string, RunState>;
+  /** Words in the draft selection, for the board's scope notice. */
+  selectionWords: number;
   focusedNudgerId: string | null;
   onFocusNudger: (id: string) => void;
   onRunNudger: (nudger: Nudger) => void;
@@ -364,6 +366,7 @@ export function DocumentView(props: DocumentViewProps) {
           templates={props.templates}
           runStates={props.runStates}
           documentId={doc.id}
+          selectionWords={props.selectionWords}
           focusedNudgerId={props.focusedNudgerId}
           hasKey={hasKey}
           onFocusNudger={props.onFocusNudger}

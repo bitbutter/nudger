@@ -333,6 +333,8 @@ export function validateBundle(raw: unknown): ValidationResult {
       provider: asString(item.provider),
       createdAt: asNumber(item.createdAt, Date.now()),
       status,
+      statusChangedAt:
+        typeof item.statusChangedAt === 'number' ? item.statusChangedAt : undefined,
       error: typeof item.error === 'string' ? item.error : undefined,
       usage: isObject(item.usage)
         ? {

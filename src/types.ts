@@ -91,6 +91,11 @@ export type Reply = {
   provider: string;
   createdAt: number;
   status: ReplyStatus;
+  /**
+   * When the status last changed. Absent on replies stored before this field
+   * existed; the do-not-raise list falls back to `createdAt` for those.
+   */
+  statusChangedAt?: number;
   error?: string;
   usage?: { inputTokens?: number; outputTokens?: number };
   /** Model-generated specifics to verify; never treated as verified facts. */

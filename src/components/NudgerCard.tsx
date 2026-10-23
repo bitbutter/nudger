@@ -146,12 +146,22 @@ function ReplyItem({ reply, compact, onStatus, onRetry }: ReplyItemProps) {
           </button>
         )}
         {reply.status === 'dismissed' ? (
-          <button type="button" className="link-btn" onClick={() => onStatus(reply, 'new')}>
-            Undismiss
+          <button
+            type="button"
+            className="link-btn"
+            onClick={() => onStatus(reply, 'new')}
+            title="Remove this nudge from the do-not-raise list, so this nudger may raise the point again"
+          >
+            Allow again
           </button>
         ) : (
-          <button type="button" className="link-btn" onClick={() => onStatus(reply, 'dismissed')}>
-            Dismiss
+          <button
+            type="button"
+            className="link-btn"
+            onClick={() => onStatus(reply, 'dismissed')}
+            title="Hide this nudge and tell this nudger not to raise it again in this document"
+          >
+            Don&rsquo;t raise this again
           </button>
         )}
         <button
@@ -246,6 +256,8 @@ export function NudgerCard({
           <span>Done — generation stopped</span>
         ) : !nudger.enabled ? (
           <span>Disabled</span>
+        ) : state?.phase === 'quiet' ? (
+          <span>Nothing new to flag {formatRelative(state.startedAt)}</span>
         ) : latest ? (
           <span>Last reply {formatRelative(latest.createdAt)}</span>
         ) : (
@@ -281,9 +293,7 @@ export function NudgerCard({
         ) : latest ? (
           <p className="reply-placeholder">
             {latest.status === 'dismissed'
-              ? busy
-                ? 'Dismissed — calculating a new nudge…'
-                : 'Dismissed. Run to calculate a new nudge.'
+              ? 'Dismissed — this nudger will not raise it again. Run for a different angle.'
               : 'Archived — the reply stays in History.'}
           </p>
         ) : busy ? (

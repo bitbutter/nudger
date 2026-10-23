@@ -105,16 +105,36 @@ describe('nudger card reply slot', () => {
       makeReply('old', 1, 'Older nudge.'),
     ]);
     expect(main).toBeNull();
-    expect(html).toContain('Dismissed. Run to calculate a new nudge.');
+    expect(html).toContain('Dismissed — this nudger will not raise it again. Run for a different angle.');
     // The dismissed reply moves into history, newest first, so it can be
-    // undismissed or copied; the older nudge is not promoted to the card.
+    // allowed again or copied; the older nudge is not promoted to the card.
     expect(history?.textContent).toContain('Dismissed nudge.');
     expect(history?.textContent).toContain('Older nudge.');
   });
 
-  it('says a new nudge is being calculated while the replacement runs', () => {
+  it('does not promise a replacement nudge while one happens to be running', () => {
     const { html } = render([makeReply('new', 2, 'Dismissed nudge.', 'dismissed')], running);
-    expect(html).toContain('Dismissed — calculating a new nudge');
+    expect(html).toContain('Dismissed — this nudger will not raise it again.');
+    expect(html).not.toContain('calculating a new nudge');
+  });
+
+  it('says nothing was raised instead of inventing a nudge', () => {
+    const quiet: RunState = {
+      phase: 'quiet',
+      nudgerId: nudger.id,
+      documentId: nudger.documentId,
+      startedAt: Date.now(),
+    };
+    const { html } = render([makeReply('new', 2, 'Rejected nudge.', 'dismissed')], quiet);
+    expect(html).toContain('Nothing new to flag');
+  });
+
+  it('labels dismissal as a do-not-raise action', () => {
+    const { history } = render([
+      makeReply('new', 2, 'Newest nudge.'),
+      makeReply('old', 1, 'Older nudge.'),
+    ]);
+    expect(history?.textContent).toContain('Don\u2019t raise this again');
   });
 
   it('explains an archived newest reply and keeps it in history', () => {
